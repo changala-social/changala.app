@@ -63,6 +63,7 @@ pub async fn require_role(db: &PgPool, did: &str, required: &str) -> Result<(), 
 }
 
 /// Check if a DID is enrolled in a specific course.
+#[allow(dead_code)]
 pub async fn require_enrolled(db: &PgPool, did: &str, course_uri: &str) -> Result<(), XrpcError> {
     let row =
         sqlx::query_as::<_, (i64,)>("SELECT 1 FROM enrollments WHERE did = $1 AND course_uri = $2")

@@ -306,7 +306,7 @@ pub async fn list_sessions(
     Query(params): Query<AppChangalaRingListSessionsParams>,
 ) -> Result<Json<AppChangalaRingListSessionsOutput>, XrpcError> {
     let app = crate::state::get();
-    let limit = params.limit.unwrap_or(50).min(100).max(1);
+    let limit = params.limit.unwrap_or(50).clamp(1, 100);
 
     let mut sql = format!("SELECT {SESSION_COLS} FROM sessions WHERE course_uri = $1");
     let mut binds: Vec<String> = vec![params.course_uri.clone()];

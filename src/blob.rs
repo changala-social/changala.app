@@ -81,6 +81,7 @@ impl S3BlobStore {
     }
 
     /// Check if a blob exists.
+    #[allow(dead_code)]
     pub async fn exists(&self, cid: &str) -> anyhow::Result<bool> {
         match self.bucket.head_object(cid).await {
             Ok(_) => Ok(true),
@@ -89,6 +90,7 @@ impl S3BlobStore {
     }
 
     /// Delete a blob by its CID.
+    #[allow(dead_code)]
     pub async fn delete(&self, cid: &str) -> anyhow::Result<()> {
         self.bucket
             .delete_object(cid)

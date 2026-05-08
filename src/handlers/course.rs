@@ -21,6 +21,7 @@ use super::auth;
 /// Column order must match the SELECT used by callers:
 ///   uri, title, code, department, semester, visibility, created_by,
 ///   class_rep_did, description, created_at
+#[allow(clippy::too_many_arguments)]
 fn course_view(
     uri: String,
     title: String,
@@ -224,7 +225,7 @@ pub async fn list_courses(
     Query(params): Query<AppChangalaRingListCoursesParams>,
 ) -> Result<Json<AppChangalaRingListCoursesOutput>, XrpcError> {
     let app = crate::state::get();
-    let limit = params.limit.unwrap_or(50).min(100).max(1);
+    let limit = params.limit.unwrap_or(50).clamp(1, 100);
 
     // Build dynamic query
     let mut sql = String::from(
@@ -398,7 +399,7 @@ pub async fn get_enrollments(
     Query(params): Query<AppChangalaRingGetEnrollmentsParams>,
 ) -> Result<Json<AppChangalaRingGetEnrollmentsOutput>, XrpcError> {
     let app = crate::state::get();
-    let limit = params.limit.unwrap_or(50).min(100).max(1);
+    let limit = params.limit.unwrap_or(50).clamp(1, 100);
 
     // Total enrolled count (regardless of pagination)
     let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM enrollments WHERE course_uri = $1")

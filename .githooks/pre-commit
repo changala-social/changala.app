@@ -3,7 +3,11 @@
 
 set -euo pipefail
 
-if git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.rs$'; then
-  cargo fmt
-  git diff --name-only | grep -E '\.rs$' | xargs -r git add
+git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.rs$' || exit 0
+
+cargo fmt
+
+CHANGED=$(git diff --name-only | grep -E '\.rs$' || true)
+if [ -n "$CHANGED" ]; then
+  echo "$CHANGED" | xargs git add
 fi

@@ -15,7 +15,7 @@ use crate::generated::types::*;
 
 /// Clamp a user-supplied limit.
 fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
-    limit.unwrap_or(default).min(100).max(1)
+    limit.unwrap_or(default).clamp(1, 100)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

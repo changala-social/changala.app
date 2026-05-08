@@ -112,7 +112,7 @@ pub async fn get_node_graph(
     Query(params): Query<AppChangalaGlobalviewGetNodeGraphParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNodeGraphOutput>, XrpcError> {
     let app = crate::state::get();
-    let depth = params.depth.unwrap_or(DEFAULT_DEPTH).min(MAX_DEPTH).max(1) as usize;
+    let depth = params.depth.unwrap_or(DEFAULT_DEPTH).clamp(1, MAX_DEPTH) as usize;
 
     // BFS state
     let mut visited: HashSet<String> = HashSet::new();
@@ -237,8 +237,7 @@ pub async fn get_backlinks(
     let limit = params
         .limit
         .unwrap_or(DEFAULT_BACKLINKS_LIMIT)
-        .min(100)
-        .max(1);
+        .clamp(1, 100);
 
     // Build the query with optional cursor filter
     let (query, has_cursor) = if params.cursor.is_some() {
@@ -327,12 +326,11 @@ pub async fn get_neighbours(
     Query(params): Query<AppChangalaGlobalviewGetNeighboursParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNeighboursOutput>, XrpcError> {
     let app = crate::state::get();
-    let hops = params.hops.unwrap_or(DEFAULT_HOPS).min(MAX_DEPTH).max(1) as usize;
+    let hops = params.hops.unwrap_or(DEFAULT_HOPS).clamp(1, MAX_DEPTH) as usize;
     let limit = params
         .limit
         .unwrap_or(DEFAULT_NEIGHBOURS_LIMIT)
-        .min(100)
-        .max(1) as usize;
+        .clamp(1, 100) as usize;
 
     // BFS with distance tracking
     let mut visited: HashMap<String, usize> = HashMap::new(); // uri → distance
@@ -369,20 +367,20 @@ pub async fn get_neighbours(
                 })?;
 
         let next_dist = current_dist + 1;
-        for (neighbour_uri,) in outbound_rows.into_iter().chain(inbound_rows.into_iter()) {
+        for (neighbour_uri,) in outbound_rows.into_iter().chain(inbound_rows) {
             if !visited.contains_key(&neighbour_uri) {
                 visited.insert(neighbour_uri.clone(), next_dist);
                 queue.push_back((neighbour_uri, next_dist));
 
                 // Early exit if we've collected enough neighbours
                 // (subtract 1 because the center node is in visited but excluded)
-                if visited.len() - 1 >= limit {
+                if visited.len() > limit {
                     break;
                 }
             }
         }
 
-        if visited.len() - 1 >= limit {
+        if visited.len() > limit {
             break;
         }
     }

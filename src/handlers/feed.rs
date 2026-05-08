@@ -17,7 +17,7 @@ const RING_DID: &str = "did:web:ring.changala.local";
 
 /// Clamp a user-supplied limit into a sane range.
 fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
-    limit.unwrap_or(default).min(100).max(1)
+    limit.unwrap_or(default).clamp(1, 100)
 }
 
 /// Map a session `status` column value to a courseFeedItem `eventType`.
@@ -52,15 +52,14 @@ pub async fn get_notes(
 
     let fetch_limit = limit + 1;
 
-    let mut sql = format!(
-        "SELECT n.uri, n.session_uri, n.author_did, n.format, n.ring_did, n.cid, \
+    let mut sql = "SELECT n.uri, n.session_uri, n.author_did, n.format, n.ring_did, n.cid, \
                 n.version, n.summary, n.created_at, \
                 COALESCE(v.cnt, 0) as vote_count \
          FROM notes n \
          LEFT JOIN (SELECT subject_uri, COUNT(*) as cnt FROM votes GROUP BY subject_uri) v \
            ON n.uri = v.subject_uri \
          WHERE n.session_uri = $1"
-    );
+        .to_string();
 
     let mut binds: Vec<String> = vec![params.session_uri.clone()];
     let mut param_idx: i32 = 2;
@@ -665,7 +664,7 @@ pub async fn get_trending_brain_tags(
         .into_iter()
         .map(|(tag, (count, sample))| (tag, count, sample))
         .collect();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
     sorted.truncate(limit);
 
     let tags: Vec<serde_json::Value> = sorted
