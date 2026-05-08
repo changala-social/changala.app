@@ -1,0 +1,39 @@
+[app]
+name = "changala"
+host = "0.0.0.0"
+port = 3000
+secret_key = "CHANGE_ME_IN_PRODUCTION_use_openssl_rand_hex_32"
+cors_origins = []
+environment = "production"
+
+[auth]
+client_id = "https://your-domain.example.com/client-metadata.json"
+redirect_uri = "https://your-domain.example.com/auth/callback"
+scope = "atproto transition:generic"
+
+[database]
+url = "postgres://changala:changala@postgres:5432/changala"
+
+[jetstream]
+host = "jetstream1.us-east.bsky.network"
+collections = [
+    "app.changala.membership",
+    "app.changala.keyword",
+    "app.changala.note",
+    "app.changala.vote",
+    "app.changala.collectivenote.proposal",
+    "app.changala.label",
+    "app.changala.brain.node",
+    "app.changala.brain.link",
+]
+
+[changala]
+database_url = "postgres://changala:changala@postgres:5432/changala"
+
+[changala.s3]
+endpoint = "http://garage:3900"
+bucket = "changala-blobs"
+region = "us-east-1"
+access_key = "CHANGE_ME"
+secret_key = "CHANGE_ME"
+path_style = true

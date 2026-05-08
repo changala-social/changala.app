@@ -1,0 +1,74 @@
+# Changala Ring Node — docker-compose
+#
+# Starts a complete Ring deployment:
+#   - changala    Ring server (port 3000)
+#   - postgres    PostgreSQL 17
+#   - garage      S3-compatible blob storage (port 9000)
+#
+# Usage:
+#   docker compose up -d
+#
+# First-time Garage setup (after `docker compose up -d`):
+#   docker compose exec garage /garage node id
+#   docker compose exec garage /garage layout assign <NODE_ID> -z dc1 -c 1G
+#   docker compose exec garage /garage layout apply --version 1
+#   docker compose exec garage /garage key create changala-key
+#   docker compose exec garage /garage bucket create changala-blobs
+#   docker compose exec garage /garage bucket allow --read --write --owner changala-blobs --key changala-key
+#
+# Then update atrg.toml [changala.s3] access_key and secret_key
+# with the key credentials from:
+#   docker compose exec garage /garage key info changala-key
+
+services:
+  changala:
+    image: ghcr.io/changala-social/changala.app:latest
+    # For local builds, uncomment:
+    # build:
+    #   context: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./deploy/atrg.toml:/app/atrg.toml:ro
+    environment:
+      RUST_LOG: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      garage:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: changala
+      POSTGRES_PASSWORD: changala
+      POSTGRES_DB: changala
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U changala"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  garage:
+    image: dxflrs/garage:v1.0.1
+    command: /garage -c /etc/garage.toml server
+    volumes:
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+      - ./deploy/garage.toml:/etc/garage.toml:ro
+    ports:
+      - "9000:3900" # S3 API
+      - "3903:3903" # Admin API (optional, remove in production)
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  garage_meta:
+  garage_data:
