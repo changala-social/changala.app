@@ -41,14 +41,6 @@ export default function BrainNodeEditor() {
   const editUri = rawUri ? decodeURIComponent(rawUri) : "";
   const isEditMode = !!editUri;
 
-  // Fetch existing content for edit mode
-  const {
-    data: existingContent,
-    isLoading: contentLoading,
-    isError: contentError,
-    error: contentErr,
-  } = useNodeContent(editUri);
-
   // Fetch existing metadata for edit mode
   const { data: metaData, isLoading: metaLoading } =
     useXrpcQuery<GetBrainFeedResponse>(
@@ -56,6 +48,19 @@ export default function BrainNodeEditor() {
       { nodeUri: editUri },
       { enabled: isEditMode },
     );
+
+  const existingNode = metaData?.nodes?.[0];
+
+  // Fetch existing content for edit mode (need cid + ringDid from metadata)
+  const {
+    data: existingContent,
+    isLoading: contentLoading,
+    isError: contentError,
+    error: contentErr,
+  } = useNodeContent(
+    existingNode?.ringRef?.cid || "",
+    existingNode?.ringRef?.ringDid || "",
+  );
 
   // Loading state for edit mode
   if (isEditMode && (contentLoading || metaLoading)) {
@@ -84,7 +89,7 @@ export default function BrainNodeEditor() {
   // Build initial values from fetched data (guaranteed loaded at this point in edit mode)
   let initialValues = EMPTY_FORM;
   if (isEditMode) {
-    const node = metaData?.nodes?.[0];
+    const node = existingNode;
     initialValues = {
       title: node?.title ?? "",
       format:
