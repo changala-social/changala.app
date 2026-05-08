@@ -384,6 +384,8 @@
               changala
               pkgs.cacert
               pkgs.tini
+              pkgs.dockerTools.fakeNss # /etc/nsswitch.conf + passwd/group for glibc DNS
+              pkgs.iana-etc # /etc/protocols + /etc/services for getprotobyname
             ];
             extraCommands = ''
               mkdir -p app
