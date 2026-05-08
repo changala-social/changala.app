@@ -1,3 +1,56 @@
+# ── Rust ────────────────────────────────────────────────────
 /target
+**/*.rs.bk
+*.pdb
+
+# ── Node / npm (web/) ──────────────────────────────────────
+node_modules/
+web/node_modules/
+web/dist/
+web/dist-ssr/
+.npm
+.pnpm-store/
+.yarn/
+*.tgz
+package-lock.json.bak
+
+# ── Secrets & env ──────────────────────────────────────────
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Nix / direnv ───────────────────────────────────────────
 .direnv/
+result
+result-*
+
+# ── Editor / IDE ───────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# ── OS junk ────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Database / blob artifacts ──────────────────────────────
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ── Logs ───────────────────────────────────────────────────
+*.log
+server.log
+logs/
+
+# ── Build artifacts ────────────────────────────────────────
+build/

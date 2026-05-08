@@ -1,30 +1,90 @@
-target/
+# ════════════════════════════════════════════════════════════
+# Changala .dockerignore
+#
+# The Dockerfile copies only pre-built binaries from build/.
+# Exclude everything else to keep the build context tiny.
+# ════════════════════════════════════════════════════════════
+
+# ── VCS ────────────────────────────────────────────────────
 .git/
 .github/
+.gitignore
+.gitmodules
+
+# ── Rust source & build ───────────────────────────────────
+target/
+src/
+changala_migrations/
+Cargo.toml
+Cargo.lock
+rust-toolchain.toml
+.cargo/
+
+# ── Web frontend (entire tree — not shipped in backend image)
+web/
+
+# ── Nix ────────────────────────────────────────────────────
 .direnv/
 .envrc
+flake.nix
+flake.lock
+result
+result-*
+
+# ── Config templates (baked at deploy time, not build time)
+atrg.toml
+deploy/
+
+# ── Tests & docs ───────────────────────────────────────────
+tests/
+e2e/
+docs/
+lexicons/
+
+# ── Database / blob artifacts ──────────────────────────────
 *.db
 *.db-wal
 *.db-shm
-tests/
-docs/
-lexicons/
-pg_migrations/
-migrations/
-src/
-Cargo.toml
-Cargo.lock
-flake.nix
-flake.lock
+*.sqlite
+*.sqlite3
+
+# ── Secrets & env ──────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+
+# ── Logs ───────────────────────────────────────────────────
+*.log
+server.log
+logs/
+
+# ── Editor / IDE / OS ─────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Docs ───────────────────────────────────────────────────
 CLAUDE.md
 ROADMAP.md
 CHANGELOG.md
 README.md
+API.md
+UIUX.md
 LICENSE
-server.log
-atrg.toml
-rust-toolchain.toml
 
-# Only build/ dir is needed (pre-built binaries)
+# ── Migration dirs that aren't needed at runtime ──────────
+pg_migrations/
+migrations/
+
+# ════════════════════════════════════════════════════════════
+# KEEP — only these enter the Docker build context:
+#   build/linux-*/changala   (pre-compiled binary)
+#   Dockerfile
+# ════════════════════════════════════════════════════════════
 !build/
 !Dockerfile
