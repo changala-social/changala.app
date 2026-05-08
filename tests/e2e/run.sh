@@ -262,7 +262,7 @@ client_id = "http://127.0.0.1:13000"
 redirect_uri = "http://127.0.0.1:13000/auth/callback"
 
 [database]
-url = "sqlite://atrg.db"
+url = "postgres://changala@127.0.0.1:15432/changala_e2e"
 
 [jetstream]
 host = "jetstream1.us-east.bsky.network"

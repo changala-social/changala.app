@@ -25,6 +25,42 @@ struct ChangalaConfig {
     s3: blob::S3Config,
 }
 
+impl ChangalaConfig {
+    /// Apply environment variable overrides. Env vars take precedence over atrg.toml.
+    fn apply_env_overrides(&mut self) {
+        let mut overrides = Vec::new();
+        if let Ok(v) = std::env::var("CHANGALA_DATABASE_URL") {
+            self.database_url = v;
+            overrides.push("CHANGALA_DATABASE_URL");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_ENDPOINT") {
+            self.s3.endpoint = v;
+            overrides.push("CHANGALA_S3_ENDPOINT");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_BUCKET") {
+            self.s3.bucket = v;
+            overrides.push("CHANGALA_S3_BUCKET");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_REGION") {
+            self.s3.region = v;
+            overrides.push("CHANGALA_S3_REGION");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_ACCESS_KEY") {
+            self.s3.access_key = v;
+            overrides.push("CHANGALA_S3_ACCESS_KEY");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_SECRET_KEY") {
+            self.s3.secret_key = v;
+            overrides.push("CHANGALA_S3_SECRET_KEY");
+        }
+        if overrides.is_empty() {
+            tracing::info!("no env var overrides applied, using atrg.toml values");
+        } else {
+            tracing::info!(overrides = ?overrides, "applied env var overrides");
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load changala-specific config from atrg.toml
@@ -38,18 +74,23 @@ async fn main() -> anyhow::Result<()> {
         .try_into()
         .context("Invalid [changala] config")?;
 
+    // Env vars override atrg.toml — for k8s Secrets, docker .env, etc.
+    config.apply_env_overrides();
+
     // Connect to PostgreSQL
     let pg_pool = PgPool::connect(&config.database_url)
         .await
         .context("Failed to connect to PostgreSQL")?;
     tracing::info!(url = %config.database_url, "connected to PostgreSQL");
 
-    // Run all migrations — business tables + atrg internals
-    sqlx::migrate!("./pg_migrations")
+    // Run Changala business migrations (courses, sessions, notes, brain, etc.)
+    // atrg's internal migrations (atrg_sessions, oauth_states) are handled
+    // automatically by AtrgApp via with_db_pool().
+    sqlx::migrate!("./migrations")
         .run(&pg_pool)
         .await
         .context("Failed to run migrations")?;
-    tracing::info!("applied all migrations");
+    tracing::info!("applied changala migrations");
 
     // Initialize S3 blob store
     let blobs = blob::S3BlobStore::new(&config.s3).context("Failed to initialize S3 blob store")?;
@@ -57,12 +98,15 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize global Changala state
     state::init(state::Changala {
-        db: pg_pool,
+        db: pg_pool.clone(),
         blobs: Arc::new(blobs),
     });
 
-    // Start the atrg server — single Postgres DB for everything
+    // Start the atrg server — shared PgPool, single database for everything.
+    // with_db_pool() passes our pool to atrg so it runs its own internal
+    // migrations (atrg_sessions, atrg_oauth_states) against the same Postgres.
     AtrgApp::new()
+        .with_db_pool(pg_pool)
         .with_auth_routes(atrg_auth::routes::auth_router())
         .with_cleanup_task(atrg_auth::routes::spawn_cleanup_task)
         .mount(routes::api())

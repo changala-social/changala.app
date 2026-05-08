@@ -12,7 +12,7 @@ redirect_uri = "https://your-domain.example.com/auth/callback"
 scope = "atproto transition:generic"
 
 [database]
-url = "sqlite:///app/data/atrg.db"
+url = "postgres://changala:changala@postgres:5432/changala"
 
 [jetstream]
 host = "jetstream1.us-east.bsky.network"

@@ -71,9 +71,9 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "atrg-auth"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41748de8f86503897a6c6cdabbf4355edbf790ad0eb2c6b57269b06a58275c98"
+checksum = "d4a5100d592a790435f7f8c53a9b1de400c77d4f964e4a17ff2050735ad0f43d"
 dependencies = [
  "anyhow",
  "atrg-core",
@@ -93,9 +93,9 @@ dependencies = [
 
 [[package]]
 name = "atrg-core"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7442abda24f8a5675bfa3b8fe612a3c15bd07c392a14e92617779d652960ae41"
+checksum = "976194d7a603258052d9138b95e9146965b038139277711a67d0adc83afcf874"
 dependencies = [
  "anyhow",
  "atrg-db",
@@ -122,9 +122,9 @@ dependencies = [
 
 [[package]]
 name = "atrg-db"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57b5ba79c858b3f13b23348fa7ddf314e8d9fb599f09498d6e30b4ecedd97ea2"
+checksum = "617f079517ffcf1092d3c9318835cde0ed5bdcfc6cbc55cd9e0bc6b8cafd50c6"
 dependencies = [
  "anyhow",
  "sqlx",
@@ -134,9 +134,9 @@ dependencies = [
 
 [[package]]
 name = "atrg-firehose"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f702cb5ab9ccfa08305ec2faff1846598ae0f122901949a57b6b27dcbcb2d82d"
+checksum = "06355872ec810b5d456eed4b797193ff5cb85875f482a20f7a3a7796b8df9b73"
 dependencies = [
  "anyhow",
  "ciborium",
@@ -152,9 +152,9 @@ dependencies = [
 
 [[package]]
 name = "atrg-identity"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a7a8cd1a852956f519a04bf8ba5c13aa4f0c4931c193235abee987d5a72950a"
+checksum = "6679cc23d8a37ecc4da4764b0a3a4f81884fc045215e93b5137f79987f0c314c"
 dependencies = [
  "anyhow",
  "moka",
@@ -166,9 +166,9 @@ dependencies = [
 
 [[package]]
 name = "atrg-repo"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a65a9f0da0e4a50aee3a3e9118fe5931f6c31356d68c19ac5c3981e64ae701e5"
+checksum = "96199a1571d92619d714dfb93764151f2441726b7f1373676828eb88f14c404d"
 dependencies = [
  "anyhow",
  "atrg-auth",
@@ -186,9 +186,9 @@ dependencies = [
 
 [[package]]
 name = "atrg-stream"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06a05d7c34b5735d62ab33ba1531d83792bcff40f752f838a5b4e045f7e65586"
+checksum = "942b0764b4abcfcaebe597092c6177b9e031ac1b9d25ce8644c4d4ee91e659fc"
 dependencies = [
  "anyhow",
  "dirs",
@@ -204,9 +204,9 @@ dependencies = [
 
 [[package]]
 name = "atrg-testing"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5b89602c96bae94002246c3c5f3813fe5119f05ebffcaab5051940a89cb574d"
+checksum = "aa2868193cb6f4c5e6a9c3a6579747fc03a3de901f9e8f0b4f1a68a487fc6bee"
 dependencies = [
  "anyhow",
  "atrg-auth",
@@ -217,7 +217,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sqlx",
  "tokio",
  "tower",
  "tracing",
@@ -225,9 +224,9 @@ dependencies = [
 
 [[package]]
 name = "atrg-xrpc"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44bab54133993a9cd0ecaaff0febb06c2e78c8f1f86a23f12ca8de3a95983eb7"
+checksum = "9d367b9a342609556d8b911bff292385858779aa0999b862ae5848da7cc0ac77"
 dependencies = [
  "atrg-core",
  "axum",
@@ -397,9 +396,9 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "cc"
-version = "1.2.61"
+version = "1.2.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d16d90359e986641506914ba71350897565610e87ce0ad9e6f28569db3dd5c6d"
+checksum = "a1dce859f0832a7d088c4f1119888ab94ef4b5d6795d1ce05afb7fe159d79f98"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -2892,9 +2891,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.52.2"
+version = "1.52.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "110a78583f19d5cdb2c5ccf321d1290344e71313c6c37d43520d386027d18386"
+checksum = "8fc7f01b389ac15039e4dc9531aa973a135d7a4135281b12d7c1bc79fd57fffe"
 dependencies = [
  "bytes",
  "libc",
