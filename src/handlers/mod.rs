@@ -7,6 +7,7 @@
 pub mod archive;
 pub mod brain;
 pub mod course;
+pub mod events;
 pub mod feed;
 pub mod graph;
 pub mod identity;

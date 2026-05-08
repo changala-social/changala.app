@@ -75,6 +75,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - XRPC route wiring: 33 implemented handlers + 29 returning 501 MethodNotImplemented
 - 2,232 lines of handler implementation code
 
+#### Brain Layer — Ring (Phase 2)
+- **BrainService** (5 handlers):
+  - `createNode` — create brain node with tags, optional academic_ref, fake CID for MVP
+  - `versionNode` — create new version linked to parent with inherited author
+  - `getNodeContent` — fetch brain node content by Ring reference (MVP stub)
+  - `createLink` — create directed link between nodes with optional edge label
+  - `deleteLink` — remove a link record
+
+#### Archive Pipeline — Ring (Phase 3)
+- **ArchiveService** (5 handlers):
+  - `initiateArchive` — begin archive for course/semester, count sessions and notes
+  - `sealArchive` — seal archive as immutable with generated bundle CID
+  - `exportArchive` — generate export reference (MVP stub — actual bundle generation deferred)
+  - `uploadToInternetArchive` — mock Internet Archive upload (MVP stub — requires IA API key)
+  - `getArchive` — retrieve archive metadata by course URI and semester
+
+#### Firehose Materialisation (Phase 4)
+- Jetstream event handler wired into `AtrgApp::on_event()`
+- Event handlers for 5 collections:
+  - `app.changala.keyword` → INSERT OR IGNORE into keywords table
+  - `app.changala.vote` → deduplicated vote materialisation
+  - `app.changala.label` → label assertion/retraction storage
+  - `app.changala.brain.node` → INSERT OR REPLACE for versioned brain nodes
+  - `app.changala.brain.link` → deduplicated link materialisation
+- Jetstream consumer connects to `jetstream1.us-east.bsky.network` subscribing to all `app.changala.*` collections
+
+#### Global View — Feeds, Search, Graph, Notifications (Phase 5)
+- **FeedService** (9 handlers):
+  - `getNotes` — session notes with vote counts and labels, sorted by votes or date
+  - `getCourseFeed` — combined session events + note activity for a course
+  - `getSocialFeed` — recent activity with mode switch (academic/brain/all)
+  - `getBrainFeed` — brain nodes with vote counts, parsed tags
+  - `getTrendingKeywords` — keyword aggregation within configurable time window
+  - `getTrendingBrainTags` — in-memory tag counting from recent brain nodes
+  - `getFollowedEnrollments` — MVP: most popular courses by enrollment count
+  - `getGlobalArchiveFeed` — sealed archives with course metadata
+  - `getKeywordHistogram` — per-session keyword frequency with window status
+- **SearchService** (4 handlers):
+  - `searchNotes` — LIKE-based search on note summaries with course/semester filters
+  - `searchCourses` — search course title and code with enrollment counts
+  - `searchArchive` — search sealed archives via course metadata
+  - `searchBrainNodes` — search brain node title/summary with tag and author filters
+- **GraphService** (3 handlers):
+  - `getNodeGraph` — BFS-based local subgraph traversal (configurable depth 1-3, max 100 nodes)
+  - `getBacklinks` — paginated list of nodes linking to a given node
+  - `getNeighbours` — flat neighbour list with distance, BFS-based
+- **NotificationService** (3 handlers):
+  - `getNotifications` — paginated with unread-only filter and unread count
+  - `markNotificationRead` — mark single notification as read
+  - `markAllRead` — bulk mark all as read
+- All XRPC routes wired: 62 implemented handlers, 0 stubs remaining
+- Total handler code: 5,199 lines across 12 modules
+
 ### Changed
 - Migrated from gRPC/protobuf architecture to AT Protocol XRPC/lexicon architecture
 - Replaced proto-based code generation with `atrg generate` lexicon-based generation

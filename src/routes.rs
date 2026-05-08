@@ -1,11 +1,8 @@
 //! Route wiring for Changala.
 //!
-//! Wires implemented XRPC handlers from `src/handlers/` and stubs for
-//! endpoints not yet implemented. Uses `atrg_xrpc::xrpc_router()` as
-//! the base router (provides JWT middleware + 501 fallback).
+//! All 62 XRPC endpoints wired to real handler implementations.
 
 use atrg_core::AppState;
-use atrg_xrpc::{XrpcError, XrpcErrorName};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
@@ -19,7 +16,7 @@ pub fn api() -> Router<AppState> {
         .merge(xrpc_routes())
 }
 
-/// All XRPC routes — implemented handlers + stubs.
+/// All XRPC routes — every endpoint wired to a real handler.
 fn xrpc_routes() -> Router<AppState> {
     atrg_xrpc::xrpc_router()
         // ── Identity ────────────────────────────────────────
@@ -162,110 +159,128 @@ fn xrpc_routes() -> Router<AppState> {
             "/xrpc/app.changala.ring.isBanned",
             get(handlers::moderation::is_banned),
         )
-        // ── Archive (stubs) ─────────────────────────────────
+        // ── Archive ─────────────────────────────────────────
         .route(
             "/xrpc/app.changala.ring.initiateArchive",
-            post(not_implemented),
+            post(handlers::archive::initiate_archive),
         )
-        .route("/xrpc/app.changala.ring.sealArchive", post(not_implemented))
+        .route(
+            "/xrpc/app.changala.ring.sealArchive",
+            post(handlers::archive::seal_archive),
+        )
         .route(
             "/xrpc/app.changala.ring.exportArchive",
-            post(not_implemented),
+            post(handlers::archive::export_archive),
         )
         .route(
             "/xrpc/app.changala.ring.uploadToInternetArchive",
-            post(not_implemented),
+            post(handlers::archive::upload_to_internet_archive),
         )
-        .route("/xrpc/app.changala.ring.getArchive", get(not_implemented))
-        // ── Brain (stubs) ───────────────────────────────────
-        .route("/xrpc/app.changala.ring.createNode", post(not_implemented))
-        .route("/xrpc/app.changala.ring.versionNode", post(not_implemented))
+        .route(
+            "/xrpc/app.changala.ring.getArchive",
+            get(handlers::archive::get_archive),
+        )
+        // ── Brain ───────────────────────────────────────────
+        .route(
+            "/xrpc/app.changala.ring.createNode",
+            post(handlers::brain::create_node),
+        )
+        .route(
+            "/xrpc/app.changala.ring.versionNode",
+            post(handlers::brain::version_node),
+        )
         .route(
             "/xrpc/app.changala.ring.getNodeContent",
-            get(not_implemented),
+            get(handlers::brain::get_node_content),
         )
-        .route("/xrpc/app.changala.ring.createLink", post(not_implemented))
-        .route("/xrpc/app.changala.ring.deleteLink", post(not_implemented))
-        // ── Global View: Feeds (stubs) ──────────────────────
+        .route(
+            "/xrpc/app.changala.ring.createLink",
+            post(handlers::brain::create_link),
+        )
+        .route(
+            "/xrpc/app.changala.ring.deleteLink",
+            post(handlers::brain::delete_link),
+        )
+        // ── Global View: Feeds ──────────────────────────────
         .route(
             "/xrpc/app.changala.globalview.getNotes",
-            get(not_implemented),
+            get(handlers::feed::get_notes),
         )
         .route(
             "/xrpc/app.changala.globalview.getCourseFeed",
-            get(not_implemented),
+            get(handlers::feed::get_course_feed),
         )
         .route(
             "/xrpc/app.changala.globalview.getSocialFeed",
-            get(not_implemented),
+            get(handlers::feed::get_social_feed),
         )
         .route(
             "/xrpc/app.changala.globalview.getBrainFeed",
-            get(not_implemented),
+            get(handlers::feed::get_brain_feed),
         )
         .route(
             "/xrpc/app.changala.globalview.getTrendingKeywords",
-            get(not_implemented),
+            get(handlers::feed::get_trending_keywords),
         )
         .route(
             "/xrpc/app.changala.globalview.getTrendingBrainTags",
-            get(not_implemented),
+            get(handlers::feed::get_trending_brain_tags),
         )
         .route(
             "/xrpc/app.changala.globalview.getFollowedEnrollments",
-            get(not_implemented),
+            get(handlers::feed::get_followed_enrollments),
         )
         .route(
             "/xrpc/app.changala.globalview.getGlobalArchiveFeed",
-            get(not_implemented),
+            get(handlers::feed::get_global_archive_feed),
         )
-        // ── Global View: Search (stubs) ─────────────────────
+        // ── Global View: Search ─────────────────────────────
         .route(
             "/xrpc/app.changala.globalview.searchNotes",
-            get(not_implemented),
+            get(handlers::search::search_notes),
         )
         .route(
             "/xrpc/app.changala.globalview.searchCourses",
-            get(not_implemented),
+            get(handlers::search::search_courses),
         )
         .route(
             "/xrpc/app.changala.globalview.searchArchive",
-            get(not_implemented),
+            get(handlers::search::search_archive),
         )
         .route(
             "/xrpc/app.changala.globalview.searchBrainNodes",
-            get(not_implemented),
+            get(handlers::search::search_brain_nodes),
         )
-        // ── Global View: Histogram (stub) ───────────────────
+        // ── Global View: Histogram ──────────────────────────
         .route(
             "/xrpc/app.changala.globalview.getKeywordHistogram",
-            get(not_implemented),
+            get(handlers::feed::get_keyword_histogram),
         )
-        // ── Global View: Graph (stubs) ──────────────────────
+        // ── Global View: Graph ──────────────────────────────
         .route(
             "/xrpc/app.changala.globalview.getNodeGraph",
-            get(not_implemented),
+            get(handlers::graph::get_node_graph),
         )
         .route(
             "/xrpc/app.changala.globalview.getBacklinks",
-            get(not_implemented),
+            get(handlers::graph::get_backlinks),
         )
         .route(
             "/xrpc/app.changala.globalview.getNeighbours",
-            get(not_implemented),
+            get(handlers::graph::get_neighbours),
         )
-        // ── Global View: Notifications (stubs) ──────────────
+        // ── Global View: Notifications ──────────────────────
         .route(
             "/xrpc/app.changala.globalview.getNotifications",
-            get(not_implemented),
+            get(handlers::notification::get_notifications),
         )
         .route(
             "/xrpc/app.changala.globalview.markNotificationRead",
-            post(not_implemented),
+            post(handlers::notification::mark_notification_read),
         )
         .route(
             "/xrpc/app.changala.globalview.markAllRead",
-            post(not_implemented),
+            post(handlers::notification::mark_all_read),
         )
 }
 
@@ -279,12 +294,4 @@ async fn index() -> Json<serde_json::Value> {
 
 async fn health() -> Json<serde_json::Value> {
     Json(json!({ "healthy": true }))
-}
-
-/// Placeholder for unimplemented XRPC endpoints — returns 501.
-async fn not_implemented() -> Result<Json<serde_json::Value>, XrpcError> {
-    Err(XrpcError {
-        name: XrpcErrorName::MethodNotImplemented,
-        message: "This endpoint is not yet implemented".to_string(),
-    })
 }
