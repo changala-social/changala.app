@@ -369,7 +369,7 @@ run_test "listCourses" \
   "GET" "/xrpc/app.changala.ring.listCourses" "" "200"
 
 run_test "listSessions (fake course)" \
-  "GET" "/xrpc/app.changala.ring.listSessions?course_uri=at://fake/course/1" "" "200"
+  "GET" "/xrpc/app.changala.ring.listSessions?courseUri=at://fake/course/1" "" "200"
 
 run_test "isBanned" \
   "GET" "/xrpc/app.changala.ring.isBanned?did=did:plc:nobody" "" "200"
@@ -378,7 +378,7 @@ run_test "isBanned" \
 section "Unauthenticated Global View Reads"
 
 run_test "getCourseFeed" \
-  "GET" "/xrpc/app.changala.globalview.getCourseFeed?course_uri=at://fake/course/1" "" "200"
+  "GET" "/xrpc/app.changala.globalview.getCourseFeed?courseUri=at://fake/course/1" "" "200"
 
 run_test "getTrendingKeywords" \
   "GET" "/xrpc/app.changala.globalview.getTrendingKeywords" "" "200"
@@ -423,22 +423,22 @@ if [ -f "$SEED_SQL" ]; then
     "GET" "/xrpc/app.changala.ring.getSession?uri=at://did:web:ring.changala.local/app.changala.session/seed001" "" "200"
 
   run_test "listSessions (seeded course)" \
-    "GET" "/xrpc/app.changala.ring.listSessions?course_uri=at://did:web:ring.changala.local/app.changala.course/seed001" "" "200"
+    "GET" "/xrpc/app.changala.ring.listSessions?courseUri=at://did:web:ring.changala.local/app.changala.course/seed001" "" "200"
 
   run_test "getNotes (seeded session)" \
-    "GET" "/xrpc/app.changala.globalview.getNotes?session_uri=at://did:web:ring.changala.local/app.changala.session/seed001" "" "200"
+    "GET" "/xrpc/app.changala.globalview.getNotes?sessionUri=at://did:web:ring.changala.local/app.changala.session/seed001" "" "200"
 
   run_test "getKeywordHistogram (seeded session)" \
-    "GET" "/xrpc/app.changala.globalview.getKeywordHistogram?session_uri=at://did:web:ring.changala.local/app.changala.session/seed001" "" "200"
+    "GET" "/xrpc/app.changala.globalview.getKeywordHistogram?sessionUri=at://did:web:ring.changala.local/app.changala.session/seed001" "" "200"
 
   run_test "getBacklinks (seeded brain node)" \
-    "GET" "/xrpc/app.changala.globalview.getBacklinks?node_uri=at://did:plc:brainuser/app.changala.brain.node/seed001" "" "200"
+    "GET" "/xrpc/app.changala.globalview.getBacklinks?nodeUri=at://did:plc:brainuser/app.changala.brain.node/seed001" "" "200"
 
   run_test "getNodeGraph (seeded brain node)" \
-    "GET" "/xrpc/app.changala.globalview.getNodeGraph?node_uri=at://did:plc:brainuser/app.changala.brain.node/seed001" "" "200"
+    "GET" "/xrpc/app.changala.globalview.getNodeGraph?nodeUri=at://did:plc:brainuser/app.changala.brain.node/seed001" "" "200"
 
   run_test "getNeighbours (seeded brain node)" \
-    "GET" "/xrpc/app.changala.globalview.getNeighbours?node_uri=at://did:plc:brainuser/app.changala.brain.node/seed001" "" "200"
+    "GET" "/xrpc/app.changala.globalview.getNeighbours?nodeUri=at://did:plc:brainuser/app.changala.brain.node/seed001" "" "200"
 else
   echo -e "  ${YELLOW}⚠  seed.sql not found at $SEED_SQL — skipping seeded data tests${RESET}"
 fi

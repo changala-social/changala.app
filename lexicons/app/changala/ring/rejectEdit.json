@@ -1,0 +1,39 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.rejectEdit",
+  "description": "Reject a proposed edit to the collective note.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Reject a proposal. Requires class rep role.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["proposalUri"],
+          "properties": {
+            "proposalUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the proposal to reject."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["proposalUri"],
+          "properties": {
+            "proposalUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the rejected proposal."
+            }
+          }
+        }
+      }
+    }
+  }
+}

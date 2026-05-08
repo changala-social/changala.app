@@ -1,0 +1,35 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.label",
+  "description": "A knowledge quality label applied to a note or brain node. ATProto-native quality signal — portable and verifiable. Can be negated to retract a previously applied label.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subjectUri", "val", "createdAt"],
+        "properties": {
+          "subjectUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the record being labelled."
+          },
+          "val": {
+            "type": "ref",
+            "ref": "app.changala.defs#labelVal",
+            "description": "The label value being applied."
+          },
+          "neg": {
+            "type": "boolean",
+            "description": "If true, this record negates/retracts a previously applied label."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

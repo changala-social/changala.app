@@ -1,0 +1,50 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.addKeyword",
+  "description": "Submit a keyword for a session during the keyword window.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Add a keyword to a session. Only valid while the keyword window is open.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["sessionUri", "text"],
+          "properties": {
+            "sessionUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the session to add a keyword to."
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "The keyword text."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["keywordUri", "windowExpiresAt"],
+          "properties": {
+            "keywordUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the created keyword record."
+            },
+            "windowExpiresAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "When the keyword submission window closes."
+            }
+          }
+        }
+      }
+    }
+  }
+}

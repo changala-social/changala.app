@@ -1,0 +1,78 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.getArchive",
+  "description": "Get details of a sealed archive.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Retrieve archive metadata for a course semester.",
+      "parameters": {
+        "type": "params",
+        "required": ["courseUri", "semester"],
+        "properties": {
+          "courseUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the course."
+          },
+          "semester": {
+            "type": "string",
+            "description": "Semester identifier."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["archiveUri", "courseUri", "semester", "sealedBy", "bundleRef", "sessionCount", "noteCount", "sealedAt"],
+          "properties": {
+            "archiveUri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "semester": {
+              "type": "string"
+            },
+            "sealedBy": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the admin who sealed the archive."
+            },
+            "bundleRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            },
+            "internetArchiveUrl": {
+              "type": "string",
+              "description": "URL on archive.org if uploaded."
+            },
+            "sessionCount": {
+              "type": "integer"
+            },
+            "noteCount": {
+              "type": "integer"
+            },
+            "sealedAt": {
+              "type": "string",
+              "format": "datetime"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.searchNotes",
+  "description": "Full-text search over notes.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Full-text search over notes.",
+      "parameters": {
+        "type": "object",
+        "required": ["q"],
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Search query string."
+          },
+          "institutionDid": {
+            "type": "string",
+            "format": "did",
+            "description": "Optional filter by institution DID."
+          },
+          "courseUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Optional filter by course AT URI."
+          },
+          "semester": {
+            "type": "string",
+            "description": "Optional filter by semester identifier."
+          },
+          "archivedOnly": {
+            "type": "boolean",
+            "description": "If true, only return notes from sealed archives."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 25,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["notes", "hitsTotal"],
+          "properties": {
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "app.changala.globalview.getNotes#noteView"
+              }
+            },
+            "hitsTotal": {
+              "type": "integer",
+              "description": "Total number of matching results."
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.collectivenote.proposal",
+  "description": "A proposed edit to the collective note for a session. The diff content blob is stored on the Ring; this PDS record holds metadata and status. Accepted or rejected by the Class Rep.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["sessionUri", "diffRingRef", "status", "createdAt"],
+        "properties": {
+          "sessionUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the app.changala.session whose collective note this proposal targets."
+          },
+          "diffRingRef": {
+            "type": "ref",
+            "ref": "app.changala.defs#ringRef",
+            "description": "Reference to the diff blob on the Ring."
+          },
+          "status": {
+            "type": "string",
+            "description": "Current status of the proposal.",
+            "knownValues": ["pending", "accepted", "rejected"]
+          },
+          "summary": {
+            "type": "string",
+            "description": "Short description of the proposed change.",
+            "maxLength": 512
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the proposal was accepted or rejected."
+          },
+          "resolvedBy": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the Class Rep who resolved this proposal."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

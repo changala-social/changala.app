@@ -1,0 +1,76 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.assignClassRep",
+  "description": "Assign a class representative for a course.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Assign a student as class representative. Requires admin role.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "classRepDid"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the course."
+            },
+            "classRepDid": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the student to assign as class rep."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri", "title", "code", "department", "semester", "visibility", "createdBy", "createdAt", "enrolledCount"],
+          "properties": {
+            "uri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "title": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "department": {
+              "type": "string"
+            },
+            "semester": {
+              "type": "string"
+            },
+            "visibility": {
+              "type": "string"
+            },
+            "createdBy": {
+              "type": "string",
+              "format": "did"
+            },
+            "classRepDid": {
+              "type": "string",
+              "format": "did"
+            },
+            "description": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "enrolledCount": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    }
+  }
+}

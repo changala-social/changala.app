@@ -1,0 +1,80 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getBacklinks",
+  "description": "Get all nodes that link TO a given brain node.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get all nodes that link TO a given brain node.",
+      "parameters": {
+        "type": "object",
+        "required": ["nodeUri"],
+        "properties": {
+          "nodeUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the target brain node to get backlinks for."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["backlinks"],
+          "properties": {
+            "backlinks": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#backlinkItem"
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    },
+    "backlinkItem": {
+      "type": "object",
+      "required": ["fromUri", "fromTitle", "fromAuthorDid", "createdAt"],
+      "properties": {
+        "fromUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the node that links to the target."
+        },
+        "fromTitle": {
+          "type": "string",
+          "description": "Title of the linking node."
+        },
+        "fromAuthorDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the author of the linking node."
+        },
+        "label": {
+          "type": "string",
+          "description": "Optional edge label on the link."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "Timestamp when the link was created."
+        }
+      }
+    }
+  }
+}

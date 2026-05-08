@@ -1,0 +1,36 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.brain.link",
+  "description": "A directed link between two knowledge nodes, or from a node to any other AT Protocol record (a session, a course, another student's note). Stored on the linking user's PDS. Backlinks are derived by the Global View's graph index — no separate backlink record is needed. When a client parses [[wikilink]] syntax in a brain node's markdown, it creates link records for each referenced node.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["fromUri", "toUri", "createdAt"],
+        "properties": {
+          "fromUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the source brain node (app.changala.brain.node)."
+          },
+          "toUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the target record. Can be a brain node, a class note, a session, or a course — any AT Protocol record."
+          },
+          "label": {
+            "type": "string",
+            "description": "Optional human-readable edge label describing the relationship (e.g. 'expands on', 'contradicts', 'see also', 'source'). Max 64 chars.",
+            "maxLength": 64
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

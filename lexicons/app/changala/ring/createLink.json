@@ -1,0 +1,53 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.createLink",
+  "description": "Create a directed link between two brain nodes.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Create a link from one brain node to another (or to a note/session/course). The Global View indexes this bidirectionally.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["fromUri", "toUri"],
+          "properties": {
+            "fromUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the source brain node."
+            },
+            "toUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the target (brain node, note, session, course)."
+            },
+            "label": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "Optional edge label (e.g. 'see also', 'contradicts', 'expands')."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["linkUri", "createdAt"],
+          "properties": {
+            "linkUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the created link record."
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "datetime"
+            }
+          }
+        }
+      }
+    }
+  }
+}

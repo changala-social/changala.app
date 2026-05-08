@@ -1,0 +1,94 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.createCourse",
+  "description": "Create a new course on this Ring instance.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Create a course record. Requires admin role.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["title", "code", "department", "semester", "visibility"],
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "Full title of the course."
+            },
+            "code": {
+              "type": "string",
+              "description": "Course code (e.g. CS301)."
+            },
+            "department": {
+              "type": "string",
+              "description": "Department offering the course."
+            },
+            "semester": {
+              "type": "string",
+              "description": "Semester identifier (e.g. 2025-monsoon)."
+            },
+            "visibility": {
+              "type": "string",
+              "description": "Visibility tier for the course."
+            },
+            "description": {
+              "type": "string",
+              "description": "Optional course description."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri", "title", "code", "department", "semester", "visibility", "createdBy", "createdAt", "enrolledCount"],
+          "properties": {
+            "uri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the created course record."
+            },
+            "title": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "department": {
+              "type": "string"
+            },
+            "semester": {
+              "type": "string"
+            },
+            "visibility": {
+              "type": "string"
+            },
+            "createdBy": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the admin who created the course."
+            },
+            "classRepDid": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the assigned class representative."
+            },
+            "description": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "enrolledCount": {
+              "type": "integer",
+              "description": "Number of students currently enrolled."
+            }
+          }
+        }
+      }
+    }
+  }
+}

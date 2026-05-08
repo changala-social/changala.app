@@ -1,0 +1,59 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.banDid",
+  "description": "Ban a DID from the Ring instance.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Ban a user from the instance. Requires admin role. Optionally set a TTL for temporary bans.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["targetDid"],
+          "properties": {
+            "targetDid": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the user to ban."
+            },
+            "ttlSeconds": {
+              "type": "integer",
+              "description": "Time-to-live in seconds for a temporary ban. Omit for permanent ban."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Optional reason for the ban."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["targetDid", "permanent", "bannedAt"],
+          "properties": {
+            "targetDid": {
+              "type": "string",
+              "format": "did"
+            },
+            "permanent": {
+              "type": "boolean",
+              "description": "Whether this is a permanent ban."
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "When the ban expires. Absent for permanent bans."
+            },
+            "bannedAt": {
+              "type": "string",
+              "format": "datetime"
+            }
+          }
+        }
+      }
+    }
+  }
+}

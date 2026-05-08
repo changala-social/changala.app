@@ -1,0 +1,43 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.getNoteContent",
+  "description": "Retrieve the raw content of a note blob from the Ring.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Fetch note content by Ring DID and CID.",
+      "parameters": {
+        "type": "params",
+        "required": ["ringDid", "cid"],
+        "properties": {
+          "ringDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the Ring instance hosting the blob."
+          },
+          "cid": {
+            "type": "string",
+            "description": "Content identifier of the note blob."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["format", "content"],
+          "properties": {
+            "format": {
+              "type": "string",
+              "description": "Content format of the note."
+            },
+            "content": {
+              "type": "string",
+              "description": "Base64-encoded raw content bytes."
+            }
+          }
+        }
+      }
+    }
+  }
+}

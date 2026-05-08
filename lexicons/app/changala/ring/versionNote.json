@@ -1,0 +1,104 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.versionNote",
+  "description": "Create a new version of an existing note.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Upload a new version of a note to the Ring. Links to the parent note version.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["parentNoteUri", "format", "content"],
+          "properties": {
+            "parentNoteUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the previous note version."
+            },
+            "format": {
+              "type": "string",
+              "description": "Content format of the note."
+            },
+            "content": {
+              "type": "string",
+              "description": "Raw note content for this version."
+            },
+            "summary": {
+              "type": "string",
+              "description": "Optional summary of changes in this version."
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "Optional timestamp for offline draft sync."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["ringRef", "noteTemplate"],
+          "properties": {
+            "ringRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            },
+            "noteTemplate": {
+              "type": "object",
+              "required": ["sessionUri", "format", "ringRef", "version", "createdAt"],
+              "properties": {
+                "sessionUri": {
+                  "type": "string",
+                  "format": "at-uri"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "ringRef": {
+                  "type": "object",
+                  "required": ["ringDid", "cid"],
+                  "properties": {
+                    "ringDid": {
+                      "type": "string",
+                      "format": "did"
+                    },
+                    "cid": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "version": {
+                  "type": "integer"
+                },
+                "parentNote": {
+                  "type": "string",
+                  "format": "at-uri"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "datetime"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

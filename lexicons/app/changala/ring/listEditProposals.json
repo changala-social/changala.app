@@ -1,0 +1,100 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.listEditProposals",
+  "description": "List edit proposals for a session's collective note.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "List proposals with optional status filter.",
+      "parameters": {
+        "type": "params",
+        "required": ["sessionUri"],
+        "properties": {
+          "sessionUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the session."
+          },
+          "statusFilter": {
+            "type": "string",
+            "description": "Filter by proposal status.",
+            "knownValues": ["pending", "accepted", "rejected"]
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["proposals"],
+          "properties": {
+            "proposals": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["proposalUri", "proposerDid", "diffRingRef", "status", "createdAt"],
+                "properties": {
+                  "proposalUri": {
+                    "type": "string",
+                    "format": "at-uri"
+                  },
+                  "proposerDid": {
+                    "type": "string",
+                    "format": "did"
+                  },
+                  "diffRingRef": {
+                    "type": "object",
+                    "required": ["ringDid", "cid"],
+                    "properties": {
+                      "ringDid": {
+                        "type": "string",
+                        "format": "did"
+                      },
+                      "cid": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "status": {
+                    "type": "string",
+                    "knownValues": ["pending", "accepted", "rejected"]
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "resolvedAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  },
+                  "resolvedBy": {
+                    "type": "string",
+                    "format": "did"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  }
+                }
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    }
+  }
+}

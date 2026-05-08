@@ -1,0 +1,71 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getKeywordHistogram",
+  "description": "Get the keyword histogram for a session.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get the keyword histogram for a session.",
+      "parameters": {
+        "type": "object",
+        "required": ["sessionUri"],
+        "properties": {
+          "sessionUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the session."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["sessionUri", "windowOpen", "totalSubmissions", "entries"],
+          "properties": {
+            "sessionUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the session this histogram is for."
+            },
+            "windowOpen": {
+              "type": "boolean",
+              "description": "Whether the keyword submission window is currently open."
+            },
+            "windowExpiresAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "When the keyword window closes. Present only if windowOpen is true."
+            },
+            "totalSubmissions": {
+              "type": "integer",
+              "description": "Total number of keyword submissions for this session."
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#histogramEntry"
+              },
+              "description": "Histogram entries sorted by count descending."
+            }
+          }
+        }
+      }
+    },
+    "histogramEntry": {
+      "type": "object",
+      "required": ["text", "count"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The keyword text."
+        },
+        "count": {
+          "type": "integer",
+          "description": "Number of submissions for this keyword."
+        }
+      }
+    }
+  }
+}

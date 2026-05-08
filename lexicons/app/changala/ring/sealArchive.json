@@ -1,0 +1,66 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.sealArchive",
+  "description": "Seal an archive, making it immutable.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Seal a previously initiated archive. Creates an immutable bundle. Requires admin role.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "semester"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the course."
+            },
+            "semester": {
+              "type": "string",
+              "description": "Semester identifier."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["archiveUri", "bundleRef", "sealedAt", "sessionCount", "noteCount"],
+          "properties": {
+            "archiveUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the sealed archive record."
+            },
+            "bundleRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            },
+            "sealedAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "sessionCount": {
+              "type": "integer"
+            },
+            "noteCount": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    }
+  }
+}

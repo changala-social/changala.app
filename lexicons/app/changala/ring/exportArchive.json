@@ -1,0 +1,67 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.exportArchive",
+  "description": "Export a sealed archive in a specific format.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Generate an export of a sealed archive in the requested format.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "semester", "format"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the course."
+            },
+            "semester": {
+              "type": "string",
+              "description": "Semester identifier."
+            },
+            "format": {
+              "type": "string",
+              "knownValues": ["latexBundle", "json", "wikitext"],
+              "description": "Export format."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["exportRef", "format", "sizeBytes", "createdAt"],
+          "properties": {
+            "exportRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            },
+            "format": {
+              "type": "string"
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "description": "Size of the exported bundle in bytes."
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "datetime"
+            }
+          }
+        }
+      }
+    }
+  }
+}

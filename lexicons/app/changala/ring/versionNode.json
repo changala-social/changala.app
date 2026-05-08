@@ -1,0 +1,130 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.versionNode",
+  "description": "Create a new version of an existing brain node.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Upload a new version of a brain node to the Ring. Links to the parent node version.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["parentNodeUri", "title", "format", "content"],
+          "properties": {
+            "parentNodeUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the previous node version."
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Title of the brain node."
+            },
+            "format": {
+              "type": "string",
+              "knownValues": ["markdown", "plaintext", "latex", "html"],
+              "description": "Content format of the node."
+            },
+            "content": {
+              "type": "string",
+              "description": "Raw source content of the node."
+            },
+            "tags": {
+              "type": "array",
+              "maxLength": 32,
+              "items": {
+                "type": "string"
+              },
+              "description": "Free-form tags for categorisation."
+            },
+            "academicRef": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "Optional link to a course or session this node relates to."
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 512,
+              "description": "Short description for graph tooltips."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["ringRef", "nodeTemplate"],
+          "properties": {
+            "ringRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            },
+            "nodeTemplate": {
+              "type": "object",
+              "required": ["title", "format", "ringRef", "version", "parentNode", "createdAt"],
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "ringRef": {
+                  "type": "object",
+                  "required": ["ringDid", "cid"],
+                  "properties": {
+                    "ringDid": {
+                      "type": "string",
+                      "format": "did"
+                    },
+                    "cid": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "academicRef": {
+                  "type": "string",
+                  "format": "at-uri"
+                },
+                "version": {
+                  "type": "integer"
+                },
+                "parentNode": {
+                  "type": "string",
+                  "format": "at-uri",
+                  "description": "AT URI of the previous version."
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "datetime"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

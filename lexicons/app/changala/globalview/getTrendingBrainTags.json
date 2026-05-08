@@ -1,0 +1,71 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getTrendingBrainTags",
+  "description": "Get most-used tags across brain nodes within a time window.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get most-used tags across brain nodes within a time window.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "institutionDid": {
+            "type": "string",
+            "format": "did",
+            "description": "Optional filter by institution DID."
+          },
+          "withinDays": {
+            "type": "integer",
+            "default": 7,
+            "description": "Look back window in days."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "description": "Maximum number of trending tags to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["tags", "computedAt"],
+          "properties": {
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#trendingTag"
+              }
+            },
+            "computedAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "Timestamp when this trending data was computed."
+            }
+          }
+        }
+      }
+    },
+    "trendingTag": {
+      "type": "object",
+      "required": ["tag", "count"],
+      "properties": {
+        "tag": {
+          "type": "string",
+          "description": "The tag text."
+        },
+        "count": {
+          "type": "integer",
+          "description": "Number of brain nodes using this tag in the window."
+        },
+        "sampleNodeUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of an example brain node using this tag."
+        }
+      }
+    }
+  }
+}

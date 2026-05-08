@@ -1,0 +1,43 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.applyLabel",
+  "description": "Apply a knowledge quality label to content.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Apply a label to a note or brain node. Creates a label record on the caller's PDS.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["subjectUri", "val"],
+          "properties": {
+            "subjectUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the content to label."
+            },
+            "val": {
+              "type": "string",
+              "description": "Label value to apply."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["labelUri"],
+          "properties": {
+            "labelUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the created label record."
+            }
+          }
+        }
+      }
+    }
+  }
+}

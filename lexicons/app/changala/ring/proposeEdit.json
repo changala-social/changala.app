@@ -1,0 +1,60 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.proposeEdit",
+  "description": "Propose an edit to the collective note for a session.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Submit a unified diff as an edit proposal for the collective note. Requires course enrollment.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["sessionUri", "diff"],
+          "properties": {
+            "sessionUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the session whose collective note to edit."
+            },
+            "diff": {
+              "type": "string",
+              "description": "Unified diff of the proposed changes."
+            },
+            "summary": {
+              "type": "string",
+              "description": "Optional summary of the proposed edit."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["proposalUri", "diffRingRef"],
+          "properties": {
+            "proposalUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the created proposal record."
+            },
+            "diffRingRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.uploadToInternetArchive",
+  "description": "Upload a sealed archive to the Internet Archive.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Upload an archive bundle to archive.org. Requires admin role. Explicit trigger only.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "semester"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the course."
+            },
+            "semester": {
+              "type": "string",
+              "description": "Semester identifier."
+            },
+            "iaTitle": {
+              "type": "string",
+              "description": "Optional title for the Internet Archive item."
+            },
+            "iaDescription": {
+              "type": "string",
+              "description": "Optional description for the Internet Archive item."
+            },
+            "iaSubject": {
+              "type": "string",
+              "description": "Optional subject/tags for the Internet Archive item."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["iaIdentifier", "iaUrl", "uploadedAt"],
+          "properties": {
+            "iaIdentifier": {
+              "type": "string",
+              "description": "Internet Archive item identifier."
+            },
+            "iaUrl": {
+              "type": "string",
+              "description": "URL of the item on archive.org."
+            },
+            "uploadedAt": {
+              "type": "string",
+              "format": "datetime"
+            }
+          }
+        }
+      }
+    }
+  }
+}

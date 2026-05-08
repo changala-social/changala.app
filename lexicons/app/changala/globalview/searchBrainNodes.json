@@ -1,0 +1,69 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.searchBrainNodes",
+  "description": "Full-text search over brain nodes.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Full-text search over brain nodes.",
+      "parameters": {
+        "type": "object",
+        "required": ["q"],
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Search query string."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional filter by tags."
+          },
+          "authorDid": {
+            "type": "string",
+            "format": "did",
+            "description": "Optional filter by author DID."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 25,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["nodes", "hitsTotal"],
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "app.changala.globalview.getBrainFeed#brainNodeView"
+              }
+            },
+            "hitsTotal": {
+              "type": "integer",
+              "description": "Total number of matching results."
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    }
+  }
+}

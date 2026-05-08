@@ -1,0 +1,93 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.closeSession",
+  "description": "Close a live session and start the keyword window.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Close a live session. Starts the keyword submission window. Requires class rep or admin role.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["sessionUri"],
+          "properties": {
+            "sessionUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the session to close."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["session", "keywordWindowExpiresAt"],
+          "properties": {
+            "session": {
+              "type": "object",
+              "required": ["uri", "courseUri", "scheduledAt", "durationMins", "status", "createdBy", "keywordWindowOpen", "createdAt"],
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "format": "at-uri"
+                },
+                "courseUri": {
+                  "type": "string",
+                  "format": "at-uri"
+                },
+                "scheduledAt": {
+                  "type": "string",
+                  "format": "datetime"
+                },
+                "durationMins": {
+                  "type": "integer"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "createdBy": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "topic": {
+                  "type": "string"
+                },
+                "openedAt": {
+                  "type": "string",
+                  "format": "datetime"
+                },
+                "closedAt": {
+                  "type": "string",
+                  "format": "datetime"
+                },
+                "keywordWindowExpiresAt": {
+                  "type": "string",
+                  "format": "datetime"
+                },
+                "keywordWindowOpen": {
+                  "type": "boolean"
+                },
+                "rescheduledTo": {
+                  "type": "string",
+                  "format": "datetime"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "datetime"
+                }
+              }
+            },
+            "keywordWindowExpiresAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "When the keyword submission window will close."
+            }
+          }
+        }
+      }
+    }
+  }
+}

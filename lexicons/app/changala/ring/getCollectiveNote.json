@@ -1,0 +1,65 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.getCollectiveNote",
+  "description": "Get the current collective note for a session.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Retrieve the latest collective note for a session.",
+      "parameters": {
+        "type": "params",
+        "required": ["sessionUri"],
+        "properties": {
+          "sessionUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the session."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["sessionUri", "ringRef", "contributorDids", "version", "updatedAt"],
+          "properties": {
+            "sessionUri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "ringRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            },
+            "contributorDids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "did"
+              },
+              "description": "DIDs of all contributors to this collective note."
+            },
+            "version": {
+              "type": "integer",
+              "description": "Current version number of the collective note."
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "When the collective note was last updated."
+            }
+          }
+        }
+      }
+    }
+  }
+}

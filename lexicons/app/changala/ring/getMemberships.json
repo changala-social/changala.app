@@ -1,0 +1,63 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.getMemberships",
+  "description": "Get all institution memberships for a given DID.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Retrieve all verified institution memberships for a user.",
+      "parameters": {
+        "type": "params",
+        "required": ["did"],
+        "properties": {
+          "did": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the user to look up."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["memberships"],
+          "properties": {
+            "memberships": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["institutionDid", "institutionDomain", "role", "verifiedAt", "membershipUri"],
+                "properties": {
+                  "institutionDid": {
+                    "type": "string",
+                    "format": "did",
+                    "description": "DID of the institution."
+                  },
+                  "institutionDomain": {
+                    "type": "string",
+                    "description": "Domain of the institution (e.g. nitc.ac.in)."
+                  },
+                  "role": {
+                    "type": "string",
+                    "description": "User's role at this institution."
+                  },
+                  "verifiedAt": {
+                    "type": "string",
+                    "format": "datetime",
+                    "description": "When the membership was verified."
+                  },
+                  "membershipUri": {
+                    "type": "string",
+                    "format": "at-uri",
+                    "description": "AT URI of the membership record."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

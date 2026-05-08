@@ -1,0 +1,26 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.vote",
+  "description": "An upvote on a note or brain node. Stored on the voter's PDS. The Global View materialises vote counts per subject.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subjectUri", "createdAt"],
+        "properties": {
+          "subjectUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the note or brain node being upvoted."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

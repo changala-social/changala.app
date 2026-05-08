@@ -1,0 +1,115 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getBrainFeed",
+  "description": "Get brain node activity from DIDs the caller follows.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get brain node activity from DIDs the caller follows.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["nodes"],
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#brainNodeView"
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    },
+    "brainNodeView": {
+      "type": "object",
+      "required": ["uri", "authorDid", "title", "format", "ringRef", "tags", "voteCount", "createdAt"],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the brain node record."
+        },
+        "authorDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the brain node author."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the brain node."
+        },
+        "format": {
+          "type": "string",
+          "description": "Content format (markdown, plaintext, latex, html)."
+        },
+        "ringRef": {
+          "type": "ref",
+          "ref": "#ringRef"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Free-form tags on this brain node."
+        },
+        "academicRef": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "Optional link to a course or session this node relates to."
+        },
+        "voteCount": {
+          "type": "integer",
+          "description": "Total vote count for this brain node."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Optional short summary of the node."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "Timestamp when the brain node was created."
+        }
+      }
+    },
+    "ringRef": {
+      "type": "object",
+      "required": ["ringDid", "cid"],
+      "properties": {
+        "ringDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the Ring holding the content blob."
+        },
+        "cid": {
+          "type": "string",
+          "description": "CID of the content blob on the Ring."
+        }
+      }
+    }
+  }
+}

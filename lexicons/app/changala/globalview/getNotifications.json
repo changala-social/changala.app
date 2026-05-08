@@ -1,0 +1,95 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getNotifications",
+  "description": "Get the authenticated user's notifications.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get the authenticated user's notifications.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "unreadOnly": {
+            "type": "boolean",
+            "description": "If true, only return unread notifications."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["notifications", "unreadCount"],
+          "properties": {
+            "notifications": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#notification"
+              }
+            },
+            "unreadCount": {
+              "type": "integer",
+              "description": "Total number of unread notifications."
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    },
+    "notification": {
+      "type": "object",
+      "required": [
+        "id",
+        "recipientDid",
+        "reason",
+        "subjectUri",
+        "read",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique notification identifier."
+        },
+        "recipientDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the notification recipient."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Notification type (e.g. sessionOpened, votReceived, linkToYourNode)."
+        },
+        "subjectUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the subject that triggered the notification."
+        },
+        "read": {
+          "type": "boolean",
+          "description": "Whether this notification has been read."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "Timestamp when the notification was created."
+        }
+      }
+    }
+  }
+}

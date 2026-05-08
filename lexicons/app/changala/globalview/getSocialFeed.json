@@ -1,0 +1,96 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getSocialFeed",
+  "description": "Get activity feed from DIDs the caller follows.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get activity feed from DIDs the caller follows.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "knownValues": ["academic", "brain", "all"],
+            "default": "all",
+            "description": "Filter feed by mode: academic only, brain only, or all."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["feed"],
+          "properties": {
+            "feed": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#socialFeedItem"
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    },
+    "socialFeedItem": {
+      "type": "object",
+      "required": ["eventType", "actorDid", "subjectUri", "createdAt"],
+      "properties": {
+        "eventType": {
+          "type": "string",
+          "knownValues": [
+            "note",
+            "vote",
+            "editProposal",
+            "enrollment",
+            "brainNode",
+            "brainLink"
+          ],
+          "description": "Type of social feed event."
+        },
+        "actorDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the actor."
+        },
+        "subjectUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the subject of this event."
+        },
+        "courseUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the related course, if applicable."
+        },
+        "sessionUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the related session, if applicable."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "Timestamp when the event occurred."
+        }
+      }
+    }
+  }
+}

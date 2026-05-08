@@ -1,0 +1,72 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.brain.node",
+  "description": "A single knowledge node in a student's public second brain. Not tied to a course or session — though it may optionally reference one via academicRef. Supports markdown (default), plaintext, LaTeX, or HTML. Content blob stored on the Ring; this PDS record holds metadata only. Versioned like notes — each edit creates a new record linked to its parent.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["title", "format", "ringRef", "version", "createdAt"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Short title of the node. Shown in graph views and link previews.",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "format": {
+            "type": "string",
+            "knownValues": [
+              "app.changala.brain.node#markdown",
+              "app.changala.brain.node#plaintext",
+              "app.changala.brain.node#latex",
+              "app.changala.brain.node#html"
+            ],
+            "description": "Content format. Markdown is the default for brain nodes."
+          },
+          "markdown": { "type": "token", "description": "Markdown source." },
+          "plaintext": { "type": "token", "description": "Plain text." },
+          "latex":     { "type": "token", "description": "LaTeX source. Appropriate for technical/academic nodes." },
+          "html":      { "type": "token", "description": "HTML. Use sparingly — markdown is preferred." },
+          "ringRef": {
+            "type": "ref",
+            "ref": "app.changala.defs#ringRef",
+            "description": "Reference to the content blob on the Ring."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Free-form tags for organisation and discovery (e.g. 'physics', 'book-notes', 'idea', 'project'). These form the student's personal Map of Content.",
+            "items": { "type": "string", "maxLength": 64 },
+            "maxLength": 32
+          },
+          "academicRef": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Optional AT URI of a related app.changala.session or app.changala.course record. When set, this node bridges the brain and academic layers — it appears in both the brain graph and the academic session view."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Monotonically increasing version number. Starts at 1.",
+            "minimum": 1
+          },
+          "parentNode": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the previous version of this node. Null for the initial version."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Short description shown in graph tooltips and link previews (max 512 chars).",
+            "maxLength": 512
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

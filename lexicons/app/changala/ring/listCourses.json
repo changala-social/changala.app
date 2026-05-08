@@ -1,0 +1,94 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.listCourses",
+  "description": "List courses on this Ring instance with optional filters.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "List courses, optionally filtered by semester and department.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "semester": {
+            "type": "string",
+            "description": "Filter by semester identifier."
+          },
+          "department": {
+            "type": "string",
+            "description": "Filter by department."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courses"],
+          "properties": {
+            "courses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["uri", "title", "code", "department", "semester", "visibility", "createdBy", "createdAt", "enrolledCount"],
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "format": "at-uri"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "department": {
+                    "type": "string"
+                  },
+                  "semester": {
+                    "type": "string"
+                  },
+                  "visibility": {
+                    "type": "string"
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "format": "did"
+                  },
+                  "classRepDid": {
+                    "type": "string",
+                    "format": "did"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  },
+                  "enrolledCount": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    }
+  }
+}

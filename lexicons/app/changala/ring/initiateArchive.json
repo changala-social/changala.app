@@ -1,0 +1,57 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.initiateArchive",
+  "description": "Initiate the archival process for a course semester.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Begin archival for a course. Collects all session notes, collective notes, and keyword data. Requires admin role.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "semester"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the course to archive."
+            },
+            "semester": {
+              "type": "string",
+              "description": "Semester identifier being archived."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "semester", "initiatedAt", "sessionCount", "noteCount"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "semester": {
+              "type": "string"
+            },
+            "initiatedAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "sessionCount": {
+              "type": "integer",
+              "description": "Number of sessions included in the archive."
+            },
+            "noteCount": {
+              "type": "integer",
+              "description": "Number of notes included in the archive."
+            }
+          }
+        }
+      }
+    }
+  }
+}

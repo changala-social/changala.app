@@ -1,0 +1,37 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.markNotificationRead",
+  "description": "Mark a single notification as read.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Mark a single notification as read.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["notificationId"],
+          "properties": {
+            "notificationId": {
+              "type": "string",
+              "description": "ID of the notification to mark as read."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["notificationId"],
+          "properties": {
+            "notificationId": {
+              "type": "string",
+              "description": "ID of the notification that was marked as read."
+            }
+          }
+        }
+      }
+    }
+  }
+}

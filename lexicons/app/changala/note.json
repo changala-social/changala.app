@@ -1,0 +1,51 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.note",
+  "description": "Academic note metadata. The actual content blob (LaTeX source, compiled PDF, etc.) is stored on the Ring; this PDS record holds metadata and a ringRef pointer. Versioned — each edit creates a new record with parentNote pointing to the previous version.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["sessionUri", "format", "ringRef", "version", "createdAt"],
+        "properties": {
+          "sessionUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the app.changala.session this note belongs to."
+          },
+          "format": {
+            "type": "ref",
+            "ref": "app.changala.defs#noteFormat",
+            "description": "Content format of the note."
+          },
+          "ringRef": {
+            "type": "ref",
+            "ref": "app.changala.defs#ringRef",
+            "description": "Reference to the content blob on the Ring."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Monotonically increasing version number. Starts at 1.",
+            "minimum": 1
+          },
+          "parentNote": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the previous version of this note."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Short summary or description of the note.",
+            "maxLength": 512
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.getNoteHistory",
+  "description": "Get the version history of a note.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Retrieve all versions of a note, ordered oldest to newest.",
+      "parameters": {
+        "type": "params",
+        "required": ["noteUri"],
+        "properties": {
+          "noteUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of any version of the note."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["sessionUri", "authorDid", "versions"],
+          "properties": {
+            "sessionUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the session this note belongs to."
+            },
+            "authorDid": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the note author."
+            },
+            "versions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["noteUri", "version", "ringRef", "createdAt"],
+                "properties": {
+                  "noteUri": {
+                    "type": "string",
+                    "format": "at-uri"
+                  },
+                  "version": {
+                    "type": "integer"
+                  },
+                  "ringRef": {
+                    "type": "object",
+                    "required": ["ringDid", "cid"],
+                    "properties": {
+                      "ringDid": {
+                        "type": "string",
+                        "format": "did"
+                      },
+                      "cid": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

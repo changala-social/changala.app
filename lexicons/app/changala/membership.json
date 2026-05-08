@@ -1,0 +1,40 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.membership",
+  "description": "Institution affiliation credential. Written to the user's PDS after email verification. A user may hold multiple memberships across institutions.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["institutionDid", "institutionDomain", "role", "verifiedAt"],
+        "properties": {
+          "institutionDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the institution's Ring."
+          },
+          "institutionDomain": {
+            "type": "string",
+            "description": "Domain of the institution (e.g. 'nitc.ac.in')."
+          },
+          "role": {
+            "type": "ref",
+            "ref": "app.changala.defs#role",
+            "description": "Role granted to the user at this institution."
+          },
+          "verifiedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when institution email was verified."
+          },
+          "verifiedEmail": {
+            "type": "string",
+            "description": "The institution email address used for verification."
+          }
+        }
+      }
+    }
+  }
+}

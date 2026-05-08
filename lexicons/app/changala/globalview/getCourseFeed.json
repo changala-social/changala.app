@@ -1,0 +1,91 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getCourseFeed",
+  "description": "Get session activity feed for a course.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get session activity feed for a course.",
+      "parameters": {
+        "type": "object",
+        "required": ["courseUri"],
+        "properties": {
+          "courseUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the course."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["feed"],
+          "properties": {
+            "feed": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#courseFeedItem"
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    },
+    "courseFeedItem": {
+      "type": "object",
+      "required": ["eventType", "actorDid", "subjectUri", "createdAt"],
+      "properties": {
+        "eventType": {
+          "type": "string",
+          "knownValues": [
+            "sessionOpened",
+            "sessionEnded",
+            "sessionCancelled",
+            "noteCreated",
+            "collectiveNoteUpdated",
+            "archiveSealed"
+          ],
+          "description": "Type of feed event."
+        },
+        "actorDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the actor who triggered this event."
+        },
+        "subjectUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the subject of this event."
+        },
+        "sessionUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the related session, if applicable."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "Timestamp when the event occurred."
+        }
+      }
+    }
+  }
+}

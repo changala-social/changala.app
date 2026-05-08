@@ -1,0 +1,147 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getNotes",
+  "description": "Get all notes for a session, enriched with vote counts and labels.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get all notes for a session, enriched with vote counts and labels.",
+      "parameters": {
+        "type": "object",
+        "required": ["sessionUri"],
+        "properties": {
+          "sessionUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the session to fetch notes for."
+          },
+          "sortBy": {
+            "type": "string",
+            "knownValues": ["votes", "createdAt"],
+            "default": "votes",
+            "description": "Sort order for returned notes."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["notes"],
+          "properties": {
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#noteView"
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    },
+    "noteView": {
+      "type": "object",
+      "required": ["uri", "authorDid", "sessionUri", "format", "ringRef", "version", "voteCount", "labels", "createdAt"],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the note record."
+        },
+        "authorDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the note author."
+        },
+        "sessionUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the session this note belongs to."
+        },
+        "format": {
+          "type": "string",
+          "description": "Content format of the note (e.g. latex, markdown)."
+        },
+        "ringRef": {
+          "type": "ref",
+          "ref": "#ringRef"
+        },
+        "version": {
+          "type": "integer",
+          "description": "Version number of the note."
+        },
+        "voteCount": {
+          "type": "integer",
+          "description": "Total vote count for this note."
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "ref",
+            "ref": "#labelView"
+          }
+        },
+        "summary": {
+          "type": "string",
+          "description": "Optional short summary of the note."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "Timestamp when the note was created."
+        }
+      }
+    },
+    "ringRef": {
+      "type": "object",
+      "required": ["ringDid", "cid"],
+      "properties": {
+        "ringDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the Ring holding the content blob."
+        },
+        "cid": {
+          "type": "string",
+          "description": "CID of the content blob on the Ring."
+        }
+      }
+    },
+    "labelView": {
+      "type": "object",
+      "required": ["val", "srcDid", "createdAt"],
+      "properties": {
+        "val": {
+          "type": "string",
+          "description": "Label value."
+        },
+        "srcDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the label source."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "Timestamp when the label was applied."
+        }
+      }
+    }
+  }
+}

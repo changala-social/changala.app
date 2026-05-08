@@ -1,0 +1,52 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.enrollStudent",
+  "description": "Enroll a student in a course.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Enroll the authenticated user (or a target DID if admin) in a course.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the course to enroll in."
+            },
+            "targetDid": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the student to enroll. For admin use; omit to enroll self."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "did", "enrolledAt"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "did": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the enrolled student."
+            },
+            "enrolledAt": {
+              "type": "string",
+              "format": "datetime"
+            }
+          }
+        }
+      }
+    }
+  }
+}

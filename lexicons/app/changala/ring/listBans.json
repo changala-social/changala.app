@@ -1,0 +1,71 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.listBans",
+  "description": "List active bans on this Ring instance.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "List all active bans, optionally filtered to permanent bans only. Requires admin role.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "permanentOnly": {
+            "type": "boolean",
+            "description": "If true, only return permanent bans."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["bans"],
+          "properties": {
+            "bans": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["targetDid", "permanent", "bannedAt"],
+                "properties": {
+                  "targetDid": {
+                    "type": "string",
+                    "format": "did"
+                  },
+                  "permanent": {
+                    "type": "boolean"
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "bannedAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  }
+                }
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    }
+  }
+}

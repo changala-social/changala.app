@@ -1,0 +1,104 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.searchCourses",
+  "description": "Search courses by text query.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Search courses by text query.",
+      "parameters": {
+        "type": "object",
+        "required": ["q"],
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Search query string."
+          },
+          "institutionDid": {
+            "type": "string",
+            "format": "did",
+            "description": "Optional filter by institution DID."
+          },
+          "semester": {
+            "type": "string",
+            "description": "Optional filter by semester identifier."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 25,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courses", "hitsTotal"],
+          "properties": {
+            "courses": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#courseResult"
+              }
+            },
+            "hitsTotal": {
+              "type": "integer",
+              "description": "Total number of matching results."
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    },
+    "courseResult": {
+      "type": "object",
+      "required": ["uri", "title", "code", "institutionDid", "department", "semester", "visibility", "enrolledCount"],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the course record."
+        },
+        "title": {
+          "type": "string",
+          "description": "Course title."
+        },
+        "code": {
+          "type": "string",
+          "description": "Course code (e.g. CS301)."
+        },
+        "institutionDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the institution offering this course."
+        },
+        "department": {
+          "type": "string",
+          "description": "Department offering the course."
+        },
+        "semester": {
+          "type": "string",
+          "description": "Semester identifier."
+        },
+        "visibility": {
+          "type": "string",
+          "description": "Visibility tier of the course."
+        },
+        "enrolledCount": {
+          "type": "integer",
+          "description": "Number of enrolled students."
+        }
+      }
+    }
+  }
+}

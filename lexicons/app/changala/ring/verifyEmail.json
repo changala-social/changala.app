@@ -1,0 +1,52 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.verifyEmail",
+  "description": "Verify institution email ownership via OTP. Call once to send OTP, call again with OTP to complete verification.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Step 1: send OTP to institution email. Step 2: submit OTP to verify and create membership record.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["did", "email"],
+          "properties": {
+            "did": {
+              "type": "string",
+              "format": "did",
+              "description": "DID of the user requesting verification."
+            },
+            "email": {
+              "type": "string",
+              "description": "Institution email address to verify."
+            },
+            "otp": {
+              "type": "string",
+              "description": "One-time password received via email. Omit on first call to trigger OTP send."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "knownValues": ["otpSent", "verified"],
+              "description": "Current verification status after this call."
+            },
+            "membershipUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the created membership record. Present only when status is verified."
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.acceptEdit",
+  "description": "Accept a proposed edit to the collective note.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Accept a proposal and apply it to the collective note. Requires class rep role.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["proposalUri"],
+          "properties": {
+            "proposalUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the proposal to accept."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["collectiveNoteUri", "newCollectiveRingRef"],
+          "properties": {
+            "collectiveNoteUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the updated collective note."
+            },
+            "newCollectiveRingRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

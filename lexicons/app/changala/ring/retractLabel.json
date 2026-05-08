@@ -1,0 +1,43 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.retractLabel",
+  "description": "Retract a previously applied label from content.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Remove a label previously applied by the caller.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["subjectUri", "val"],
+          "properties": {
+            "subjectUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the content to remove the label from."
+            },
+            "val": {
+              "type": "string",
+              "description": "Label value to retract."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["labelUri"],
+          "properties": {
+            "labelUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the retracted label record."
+            }
+          }
+        }
+      }
+    }
+  }
+}

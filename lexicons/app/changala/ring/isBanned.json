@@ -1,0 +1,40 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.isBanned",
+  "description": "Check if a DID is currently banned.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Check ban status for a given DID.",
+      "parameters": {
+        "type": "params",
+        "required": ["did"],
+        "properties": {
+          "did": {
+            "type": "string",
+            "format": "did",
+            "description": "DID to check ban status for."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["banned"],
+          "properties": {
+            "banned": {
+              "type": "boolean",
+              "description": "Whether the DID is currently banned."
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "When the ban expires. Absent if not banned or if permanent."
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.session",
+  "description": "A single class session (period). Stored on the Ring's DID repository. Managed by the Class Rep through lifecycle transitions: scheduled → live → ended. Sessions may also be cancelled or rescheduled.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["courseUri", "scheduledAt", "durationMins", "status", "createdBy", "createdAt"],
+        "properties": {
+          "courseUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the parent app.changala.course record."
+          },
+          "scheduledAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Scheduled start time for this session."
+          },
+          "durationMins": {
+            "type": "integer",
+            "description": "Expected duration in minutes.",
+            "minimum": 1
+          },
+          "status": {
+            "type": "ref",
+            "ref": "app.changala.defs#sessionStatus",
+            "description": "Current lifecycle status of the session."
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the Class Rep who created this session."
+          },
+          "topic": {
+            "type": "string",
+            "description": "Optional topic or title for this session.",
+            "maxLength": 256
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when session was opened (transitioned to live)."
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when session was closed (transitioned to ended)."
+          },
+          "keywordWindowExpiresAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When the keyword submission window closes (typically 60 minutes after session ends)."
+          },
+          "rescheduledTo": {
+            "type": "string",
+            "format": "datetime",
+            "description": "New scheduled time if the session was rescheduled."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

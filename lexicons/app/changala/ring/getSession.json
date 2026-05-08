@@ -1,0 +1,79 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.getSession",
+  "description": "Get details of a specific session.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Retrieve a session by its AT URI.",
+      "parameters": {
+        "type": "params",
+        "required": ["uri"],
+        "properties": {
+          "uri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the session record."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri", "courseUri", "scheduledAt", "durationMins", "status", "createdBy", "keywordWindowOpen", "createdAt"],
+          "properties": {
+            "uri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "scheduledAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "durationMins": {
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            },
+            "createdBy": {
+              "type": "string",
+              "format": "did"
+            },
+            "topic": {
+              "type": "string"
+            },
+            "openedAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "closedAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "keywordWindowExpiresAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "keywordWindowOpen": {
+              "type": "boolean"
+            },
+            "rescheduledTo": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "datetime"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.createSession",
+  "description": "Create a new class session for a course.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Schedule a new session. Requires class rep or admin role.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "scheduledAt", "durationMins"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the course this session belongs to."
+            },
+            "scheduledAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "Scheduled start time of the session."
+            },
+            "durationMins": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Duration of the session in minutes."
+            },
+            "topic": {
+              "type": "string",
+              "description": "Optional topic or title for this session."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri", "courseUri", "scheduledAt", "durationMins", "status", "createdBy", "keywordWindowOpen", "createdAt"],
+          "properties": {
+            "uri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the created session record."
+            },
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "scheduledAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "durationMins": {
+              "type": "integer"
+            },
+            "status": {
+              "type": "string",
+              "description": "Current lifecycle status of the session."
+            },
+            "createdBy": {
+              "type": "string",
+              "format": "did"
+            },
+            "topic": {
+              "type": "string"
+            },
+            "openedAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "closedAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "keywordWindowExpiresAt": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "keywordWindowOpen": {
+              "type": "boolean",
+              "description": "Whether the keyword submission window is currently open."
+            },
+            "rescheduledTo": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "datetime"
+            }
+          }
+        }
+      }
+    }
+  }
+}

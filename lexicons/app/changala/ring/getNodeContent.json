@@ -1,0 +1,43 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.getNodeContent",
+  "description": "Retrieve the raw content of a brain node blob from the Ring.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Fetch brain node content by Ring DID and CID.",
+      "parameters": {
+        "type": "params",
+        "required": ["ringDid", "cid"],
+        "properties": {
+          "ringDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the Ring instance hosting the blob."
+          },
+          "cid": {
+            "type": "string",
+            "description": "Content identifier of the brain node blob."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["format", "content"],
+          "properties": {
+            "format": {
+              "type": "string",
+              "description": "Content format of the node."
+            },
+            "content": {
+              "type": "string",
+              "description": "Raw source content of the node."
+            }
+          }
+        }
+      }
+    }
+  }
+}

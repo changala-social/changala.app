@@ -1,0 +1,64 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.searchArchive",
+  "description": "Search sealed course archives.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Search sealed course archives.",
+      "parameters": {
+        "type": "object",
+        "required": ["q"],
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Search query string."
+          },
+          "institutionDid": {
+            "type": "string",
+            "format": "did",
+            "description": "Optional filter by institution DID."
+          },
+          "semester": {
+            "type": "string",
+            "description": "Optional filter by semester identifier."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 25,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["results", "hitsTotal"],
+          "properties": {
+            "results": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "app.changala.globalview.getGlobalArchiveFeed#archiveFeedItem"
+              }
+            },
+            "hitsTotal": {
+              "type": "integer",
+              "description": "Total number of matching results."
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    }
+  }
+}

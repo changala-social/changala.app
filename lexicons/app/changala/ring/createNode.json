@@ -1,0 +1,125 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.createNode",
+  "description": "Create a new brain node. Stores content on Ring and returns metadata template.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Upload brain node content to the Ring and receive a node template for PDS record creation.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["title", "format", "content"],
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Title of the brain node."
+            },
+            "format": {
+              "type": "string",
+              "knownValues": ["markdown", "plaintext", "latex", "html"],
+              "description": "Content format of the node."
+            },
+            "content": {
+              "type": "string",
+              "description": "Raw source content of the node."
+            },
+            "tags": {
+              "type": "array",
+              "maxLength": 32,
+              "items": {
+                "type": "string"
+              },
+              "description": "Free-form tags for categorisation."
+            },
+            "academicRef": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "Optional link to a course or session this node relates to."
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 512,
+              "description": "Short description for graph tooltips."
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "Optional timestamp for offline draft sync."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["ringRef", "nodeTemplate"],
+          "properties": {
+            "ringRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            },
+            "nodeTemplate": {
+              "type": "object",
+              "required": ["title", "format", "ringRef", "version", "createdAt"],
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "ringRef": {
+                  "type": "object",
+                  "required": ["ringDid", "cid"],
+                  "properties": {
+                    "ringDid": {
+                      "type": "string",
+                      "format": "did"
+                    },
+                    "cid": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "academicRef": {
+                  "type": "string",
+                  "format": "at-uri"
+                },
+                "version": {
+                  "type": "integer"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "datetime"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

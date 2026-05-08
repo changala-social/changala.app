@@ -1,0 +1,104 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.createNote",
+  "description": "Create a new note for a session. Stores content blob on Ring and returns metadata template.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Upload note content to the Ring and receive a note template for PDS record creation.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["sessionUri", "format", "content"],
+          "properties": {
+            "sessionUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the session this note belongs to."
+            },
+            "format": {
+              "type": "string",
+              "description": "Content format of the note (e.g. latex, plaintext)."
+            },
+            "content": {
+              "type": "string",
+              "description": "Raw note content (LaTeX source or plaintext)."
+            },
+            "summary": {
+              "type": "string",
+              "description": "Optional short summary of the note."
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "datetime",
+              "description": "Optional timestamp for offline draft sync."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["ringRef", "noteTemplate"],
+          "properties": {
+            "ringRef": {
+              "type": "object",
+              "required": ["ringDid", "cid"],
+              "properties": {
+                "ringDid": {
+                  "type": "string",
+                  "format": "did"
+                },
+                "cid": {
+                  "type": "string"
+                }
+              }
+            },
+            "noteTemplate": {
+              "type": "object",
+              "required": ["sessionUri", "format", "ringRef", "version", "createdAt"],
+              "properties": {
+                "sessionUri": {
+                  "type": "string",
+                  "format": "at-uri"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "ringRef": {
+                  "type": "object",
+                  "required": ["ringDid", "cid"],
+                  "properties": {
+                    "ringDid": {
+                      "type": "string",
+                      "format": "did"
+                    },
+                    "cid": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "version": {
+                  "type": "integer"
+                },
+                "parentNote": {
+                  "type": "string",
+                  "format": "at-uri"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "datetime"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

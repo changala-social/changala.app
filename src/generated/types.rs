@@ -1472,7 +1472,8 @@ pub struct AppChangalaGlobalviewGetTrendingKeywordsTrendingKeyword {
 pub struct AppChangalaGlobalviewGetTrendingKeywordsParams {
     /// DID of the institution to scope trending keywords.
     #[serde(rename = "institutionDid")]
-    pub institution_did: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub institution_did: Option<String>,
     /// Maximum number of trending keywords to return.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<i64>,

@@ -1,0 +1,39 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.deleteLink",
+  "description": "Delete an existing link between brain nodes.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Remove a previously created link. Only the link creator can delete it.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["linkUri"],
+          "properties": {
+            "linkUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the link record to delete."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["linkUri"],
+          "properties": {
+            "linkUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the deleted link record."
+            }
+          }
+        }
+      }
+    }
+  }
+}

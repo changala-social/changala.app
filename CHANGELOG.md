@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-05-08
+
+### Fixed
+- E2E test query params now use camelCase to match serde `#[serde(rename)]` wire format (courseUri, sessionUri, nodeUri)
+- `SessionRow` type mismatch: `duration_mins` changed from `i64` to `i32` to match PostgreSQL `INTEGER` column type
+- `getTrendingKeywords` no longer requires `institutionDid` — made optional for single-institution MVP
+
 ### Added
 
 #### Foundation (Phase 0)

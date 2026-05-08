@@ -1,0 +1,124 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.defs",
+  "description": "Shared type definitions for the Changala platform.",
+  "defs": {
+    "ringRef": {
+      "type": "object",
+      "description": "Reference to a content blob stored on a Ring instance.",
+      "required": ["ringDid", "cid"],
+      "properties": {
+        "ringDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the Ring instance hosting the blob."
+        },
+        "cid": {
+          "type": "string",
+          "description": "Content identifier of the blob on the Ring."
+        }
+      }
+    },
+    "role": {
+      "type": "string",
+      "description": "Role of a user within an institution.",
+      "knownValues": ["student", "classRep", "admin", "faculty"]
+    },
+    "sessionStatus": {
+      "type": "string",
+      "description": "Lifecycle status of a class session.",
+      "knownValues": ["scheduled", "live", "ended", "cancelled", "rescheduled"]
+    },
+    "noteFormat": {
+      "type": "string",
+      "description": "Content format for academic notes.",
+      "knownValues": ["latex", "plaintext"]
+    },
+    "visibility": {
+      "type": "string",
+      "description": "Visibility tier for content.",
+      "knownValues": ["world", "institution", "course"]
+    },
+    "labelVal": {
+      "type": "string",
+      "description": "Knowledge quality label value.",
+      "knownValues": ["endorsed", "communityVerified", "archived"]
+    },
+    "notificationType": {
+      "type": "string",
+      "description": "Type of platform notification.",
+      "knownValues": [
+        "sessionOpened",
+        "sessionCancelled",
+        "sessionRescheduled",
+        "keywordWindowClosing",
+        "noteVoted",
+        "editProposed",
+        "editAccepted",
+        "archiveInitiated",
+        "labelApplied",
+        "brainNodeLinked"
+      ]
+    },
+    "labelSignal": {
+      "type": "object",
+      "description": "A materialised label signal applied to content.",
+      "required": ["val", "srcDid", "createdAt"],
+      "properties": {
+        "val": {
+          "type": "ref",
+          "ref": "app.changala.defs#labelVal"
+        },
+        "srcDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the user who applied the label."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime"
+        }
+      }
+    },
+    "notification": {
+      "type": "object",
+      "description": "A platform notification delivered to a user.",
+      "required": [
+        "id",
+        "recipientDid",
+        "reason",
+        "subjectUri",
+        "read",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique notification identifier."
+        },
+        "recipientDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the notification recipient."
+        },
+        "reason": {
+          "type": "ref",
+          "ref": "app.changala.defs#notificationType"
+        },
+        "subjectUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the record that triggered this notification."
+        },
+        "read": {
+          "type": "boolean",
+          "description": "Whether this notification has been read."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime"
+        }
+      }
+    }
+  }
+}

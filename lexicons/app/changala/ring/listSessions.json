@@ -1,0 +1,110 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.listSessions",
+  "description": "List sessions for a course with optional status filter.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "List sessions for a given course, optionally filtered by status.",
+      "parameters": {
+        "type": "params",
+        "required": ["courseUri"],
+        "properties": {
+          "courseUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the course."
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by session statuses (e.g. scheduled, live, ended)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["sessions"],
+          "properties": {
+            "sessions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["uri", "courseUri", "scheduledAt", "durationMins", "status", "createdBy", "keywordWindowOpen", "createdAt"],
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "format": "at-uri"
+                  },
+                  "courseUri": {
+                    "type": "string",
+                    "format": "at-uri"
+                  },
+                  "scheduledAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  },
+                  "durationMins": {
+                    "type": "integer"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "format": "did"
+                  },
+                  "topic": {
+                    "type": "string"
+                  },
+                  "openedAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  },
+                  "closedAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  },
+                  "keywordWindowExpiresAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  },
+                  "keywordWindowOpen": {
+                    "type": "boolean"
+                  },
+                  "rescheduledTo": {
+                    "type": "string",
+                    "format": "datetime"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "datetime"
+                  }
+                }
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    }
+  }
+}

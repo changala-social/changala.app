@@ -28,7 +28,7 @@ type SessionRow = (
     String,         // 0  uri
     String,         // 1  course_uri
     String,         // 2  scheduled_at
-    i64,            // 3  duration_mins
+    i32,            // 3  duration_mins
     String,         // 4  status
     String,         // 5  created_by
     Option<String>, // 6  topic
@@ -66,7 +66,7 @@ fn session_view(row: &SessionRow) -> SessionViewFields {
         uri: row.0.clone(),
         course_uri: row.1.clone(),
         scheduled_at: row.2.clone(),
-        duration_mins: row.3,
+        duration_mins: row.3 as i64,
         status: row.4.clone(),
         created_by: row.5.clone(),
         topic: row.6.clone(),

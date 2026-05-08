@@ -1,0 +1,61 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.course",
+  "description": "A course or subject record. Stored on the Ring's DID repository, not on individual user PDSes. Represents a single offering of a course in a given semester.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["title", "code", "department", "semester", "visibility", "createdBy", "createdAt"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Full title of the course.",
+            "maxLength": 256
+          },
+          "code": {
+            "type": "string",
+            "description": "Course code (e.g. 'CS301').",
+            "maxLength": 32
+          },
+          "department": {
+            "type": "string",
+            "description": "Department offering the course.",
+            "maxLength": 128
+          },
+          "semester": {
+            "type": "string",
+            "description": "Semester identifier (e.g. '2024-odd', '2025-even').",
+            "maxLength": 32
+          },
+          "visibility": {
+            "type": "ref",
+            "ref": "app.changala.defs#visibility",
+            "description": "Visibility tier for this course's content."
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the admin who created the course."
+          },
+          "classRepDid": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the assigned Class Rep."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional course description.",
+            "maxLength": 1024
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

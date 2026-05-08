@@ -1,0 +1,54 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.archive",
+  "description": "A sealed end-of-semester archive record. Immutable once sealed. Contains a bundleRef pointing to the archived content blob on the Ring. May optionally include an Internet Archive URL after upload.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["courseUri", "semester", "sealedBy", "bundleRef", "sessionCount", "noteCount", "sealedAt"],
+        "properties": {
+          "courseUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the app.changala.course being archived."
+          },
+          "semester": {
+            "type": "string",
+            "description": "Semester identifier (e.g. '2024-odd').",
+            "maxLength": 32
+          },
+          "sealedBy": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the admin who sealed the archive."
+          },
+          "bundleRef": {
+            "type": "ref",
+            "ref": "app.changala.defs#ringRef",
+            "description": "Reference to the archive bundle blob on the Ring."
+          },
+          "internetArchiveUrl": {
+            "type": "string",
+            "description": "URL on archive.org if the bundle has been uploaded."
+          },
+          "sessionCount": {
+            "type": "integer",
+            "description": "Number of sessions included in this archive."
+          },
+          "noteCount": {
+            "type": "integer",
+            "description": "Number of notes included in this archive."
+          },
+          "sealedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the archive was sealed."
+          }
+        }
+      }
+    }
+  }
+}

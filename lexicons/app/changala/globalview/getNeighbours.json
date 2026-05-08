@@ -1,0 +1,85 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getNeighbours",
+  "description": "Get brain nodes reachable within N hops from a given node.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get brain nodes reachable within N hops from a given node.",
+      "parameters": {
+        "type": "object",
+        "required": ["nodeUri"],
+        "properties": {
+          "nodeUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the brain node to find neighbours for."
+          },
+          "hops": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 1,
+            "description": "Number of hops to traverse."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["neighbours"],
+          "properties": {
+            "neighbours": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#neighbourNode"
+              }
+            }
+          }
+        }
+      }
+    },
+    "neighbourNode": {
+      "type": "object",
+      "required": ["uri", "title", "authorDid", "tags", "distance"],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the neighbouring brain node."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the brain node."
+        },
+        "authorDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the node author."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags on this node."
+        },
+        "distance": {
+          "type": "integer",
+          "description": "Number of hops from the source node."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Optional short summary."
+        }
+      }
+    }
+  }
+}

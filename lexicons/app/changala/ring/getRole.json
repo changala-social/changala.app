@@ -1,0 +1,35 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.getRole",
+  "description": "Get the role of a user within this Ring instance.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Retrieve the current role for a DID on this instance.",
+      "parameters": {
+        "type": "params",
+        "required": ["did"],
+        "properties": {
+          "did": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the user to look up."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["role"],
+          "properties": {
+            "role": {
+              "type": "string",
+              "description": "The user's role on this instance."
+            }
+          }
+        }
+      }
+    }
+  }
+}

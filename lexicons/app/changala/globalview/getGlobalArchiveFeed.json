@@ -1,0 +1,92 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getGlobalArchiveFeed",
+  "description": "Get recently sealed course archives from any Ring on the network.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get recently sealed course archives from any Ring on the network.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "institutionDid": {
+            "type": "string",
+            "format": "did",
+            "description": "Optional filter by institution DID."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 25,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["items"],
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#archiveFeedItem"
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for next page."
+            }
+          }
+        }
+      }
+    },
+    "archiveFeedItem": {
+      "type": "object",
+      "required": ["archiveUri", "courseUri", "courseTitle", "semester", "institutionDid", "sessionCount", "sealedAt"],
+      "properties": {
+        "archiveUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the archive record."
+        },
+        "courseUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the archived course."
+        },
+        "courseTitle": {
+          "type": "string",
+          "description": "Title of the archived course."
+        },
+        "semester": {
+          "type": "string",
+          "description": "Semester identifier (e.g. 2025-monsoon)."
+        },
+        "institutionDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the institution that owns this archive."
+        },
+        "iaUrl": {
+          "type": "string",
+          "description": "Internet Archive URL, if uploaded."
+        },
+        "sessionCount": {
+          "type": "integer",
+          "description": "Number of sessions in this archive."
+        },
+        "sealedAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "Timestamp when the archive was sealed."
+        }
+      }
+    }
+  }
+}

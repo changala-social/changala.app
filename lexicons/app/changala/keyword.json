@@ -1,0 +1,32 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.keyword",
+  "description": "A student keyword submission for a session. Stored on the student's PDS. The Global View materialises these into keyword histograms per session. Attribution is per-user on the PDS; the histogram API presents anonymous aggregates.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["sessionUri", "text", "createdAt"],
+        "properties": {
+          "sessionUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the app.changala.session this keyword belongs to."
+          },
+          "text": {
+            "type": "string",
+            "description": "The keyword or short phrase.",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

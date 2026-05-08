@@ -1,0 +1,61 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.globalview.getFollowedEnrollments",
+  "description": "Get courses that people you follow have enrolled in. Used for onboarding discovery.",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get courses that people you follow have enrolled in. Used for onboarding discovery.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "description": "Maximum number of results to return."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["enrollments"],
+          "properties": {
+            "enrollments": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#followedEnrollment"
+              }
+            }
+          }
+        }
+      }
+    },
+    "followedEnrollment": {
+      "type": "object",
+      "required": ["courseUri", "courseTitle", "institutionDid", "followedCount"],
+      "properties": {
+        "courseUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT URI of the course."
+        },
+        "courseTitle": {
+          "type": "string",
+          "description": "Title of the course."
+        },
+        "institutionDid": {
+          "type": "string",
+          "format": "did",
+          "description": "DID of the institution offering this course."
+        },
+        "followedCount": {
+          "type": "integer",
+          "description": "Number of people you follow enrolled in this course."
+        }
+      }
+    }
+  }
+}

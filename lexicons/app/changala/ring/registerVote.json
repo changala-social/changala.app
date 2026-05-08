@@ -1,0 +1,47 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.registerVote",
+  "description": "Register a vote on a note or brain node.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Register a vote signal. The Ring indexes the vote and returns the updated count.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["voteUri", "subjectUri"],
+          "properties": {
+            "voteUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the vote record on the voter's PDS."
+            },
+            "subjectUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the content being voted on."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["subjectUri", "totalVotes"],
+          "properties": {
+            "subjectUri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "totalVotes": {
+              "type": "integer",
+              "description": "Total vote count for the subject after this vote."
+            }
+          }
+        }
+      }
+    }
+  }
+}
