@@ -8,14 +8,15 @@ use atrg_repo::Tid;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use chrono::Utc;
 
+use atrg_auth::RequireAuth;
+
 use crate::generated::types::*;
+
+use super::auth;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Placeholder DID used until auth extraction is wired up.
-const PLACEHOLDER_DID: &str = "did:plc:placeholder";
 
 /// Build a full course view from a DB row + an enrollment count.
 ///
@@ -123,13 +124,16 @@ async fn fetch_course_view(
 /// view with `enrolled_count: 0`.
 pub async fn create_course(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateCourseInput>,
 ) -> Result<Json<AppChangalaRingCreateCourseOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    auth::require_role(&state, &session.did, "admin").await?;
+
     let rkey = Tid::now().to_string();
     let uri = format!("at://changala.ring/app.changala.course/{rkey}");
     let now = Utc::now().to_rfc3339();
-    // TODO: extract DID from authenticated session
-    let created_by = PLACEHOLDER_DID.to_string();
+    let created_by = session.did.clone();
 
     sqlx::query(
         "INSERT INTO courses (uri, rkey, title, code, department, semester, \
@@ -330,12 +334,12 @@ pub async fn list_courses(
 /// Returns 400 (InvalidRequest) on duplicate enrollment.
 pub async fn enroll_student(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingEnrollStudentInput>,
 ) -> Result<Json<AppChangalaRingEnrollStudentOutput>, XrpcError> {
-    // TODO: extract DID from auth when target_did is not provided
-    let did = input
-        .target_did
-        .unwrap_or_else(|| PLACEHOLDER_DID.to_string());
+    auth::check_not_banned(&state, &session.did).await?;
+
+    let did = input.target_did.unwrap_or_else(|| session.did.clone());
     let now = Utc::now().to_rfc3339();
 
     // Verify the course exists
@@ -461,8 +465,12 @@ pub async fn get_enrollments(
 /// course view.
 pub async fn assign_class_rep(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingAssignClassRepInput>,
 ) -> Result<Json<AppChangalaRingAssignClassRepOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    auth::require_role(&state, &session.did, "admin").await?;
+
     // Verify the course exists
     let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = ?")
         .bind(&input.course_uri)

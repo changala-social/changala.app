@@ -8,14 +8,15 @@ use atrg_repo::Tid;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use chrono::{Duration, Utc};
 
+use atrg_auth::RequireAuth;
+
 use crate::generated::types::*;
+
+use super::auth;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Placeholder DID used until auth extraction is wired up.
-const PLACEHOLDER_DID: &str = "did:plc:placeholder";
 
 /// Keyword window duration after a session is closed (60 minutes).
 const KEYWORD_WINDOW_MINS: i64 = 60;
@@ -225,8 +226,12 @@ fn into_reschedule_output(v: SessionViewFields) -> AppChangalaRingRescheduleSess
 /// Creates a new session for a course with status `scheduled`.
 pub async fn create_session(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateSessionInput>,
 ) -> Result<Json<AppChangalaRingCreateSessionOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    auth::require_class_rep_or_admin(&state, &session.did, &input.course_uri).await?;
+
     // Verify the course exists
     let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = ?")
         .bind(&input.course_uri)
@@ -247,8 +252,7 @@ pub async fn create_session(
     let rkey = Tid::now().to_string();
     let uri = format!("at://changala.ring/app.changala.session/{rkey}");
     let now = Utc::now().to_rfc3339();
-    // TODO: extract DID from authenticated session
-    let created_by = PLACEHOLDER_DID.to_string();
+    let created_by = session.did.clone();
 
     sqlx::query(
         "INSERT INTO sessions (uri, rkey, course_uri, scheduled_at, duration_mins, \
@@ -373,8 +377,13 @@ pub async fn list_sessions(
 /// the current time.
 pub async fn open_session(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingOpenSessionInput>,
 ) -> Result<Json<AppChangalaRingOpenSessionOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    let course_uri = auth::get_course_for_session(&state, &input.session_uri).await?;
+    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+
     let row = require_session_row(&state.db, &input.session_uri).await?;
 
     // Validate current status
@@ -411,8 +420,13 @@ pub async fn open_session(
 /// a 60-minute keyword submission window.
 pub async fn close_session(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCloseSessionInput>,
 ) -> Result<Json<AppChangalaRingCloseSessionOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    let course_uri = auth::get_course_for_session(&state, &input.session_uri).await?;
+    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+
     let row = require_session_row(&state.db, &input.session_uri).await?;
 
     if row.4 != "live" {
@@ -458,8 +472,13 @@ pub async fn close_session(
 /// Cancels a session. Valid from `scheduled` or `live` status.
 pub async fn cancel_session(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCancelSessionInput>,
 ) -> Result<Json<AppChangalaRingCancelSessionOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    let course_uri = auth::get_course_for_session(&state, &input.session_uri).await?;
+    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+
     let row = require_session_row(&state.db, &input.session_uri).await?;
 
     if row.4 != "scheduled" && row.4 != "live" {
@@ -490,8 +509,13 @@ pub async fn cancel_session(
 /// Reschedules a session. Valid only from `scheduled` status.
 pub async fn reschedule_session(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRescheduleSessionInput>,
 ) -> Result<Json<AppChangalaRingRescheduleSessionOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    let course_uri = auth::get_course_for_session(&state, &input.session_uri).await?;
+    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+
     let row = require_session_row(&state.db, &input.session_uri).await?;
 
     if row.4 != "scheduled" {

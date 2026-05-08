@@ -1,5 +1,6 @@
 //! Archive service handlers — end-of-semester archival pipeline.
 
+use atrg_auth::RequireAuth;
 use axum::extract::Query;
 use axum::{extract::State, Json};
 
@@ -8,6 +9,8 @@ use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
 use crate::generated::types::*;
+
+use super::auth;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -25,9 +28,6 @@ fn fake_cid(content: &str) -> String {
 /// Placeholder Ring DID used until real Ring identity is provisioned.
 const RING_DID: &str = "did:web:ring.changala.local";
 
-/// Placeholder DID representing the authenticated caller.
-const PLACEHOLDER_DID: &str = "did:plc:placeholder";
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Archive Lifecycle
 // ═══════════════════════════════════════════════════════════════════════════
@@ -39,8 +39,12 @@ const PLACEHOLDER_DID: &str = "did:plc:placeholder";
 /// record with status `initiated`.
 pub async fn initiate_archive(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingInitiateArchiveInput>,
 ) -> Result<Json<AppChangalaRingInitiateArchiveOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    auth::require_role(&state, &session.did, "admin").await?;
+
     let now = chrono::Utc::now().to_rfc3339();
 
     // Validate the course exists.
@@ -130,8 +134,12 @@ pub async fn initiate_archive(
 /// bundle CID and assigns an AT URI to the sealed archive record.
 pub async fn seal_archive(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingSealArchiveInput>,
 ) -> Result<Json<AppChangalaRingSealArchiveOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    auth::require_role(&state, &session.did, "admin").await?;
+
     let now = chrono::Utc::now().to_rfc3339();
 
     // Validate the archive exists with status 'initiated'.
@@ -169,7 +177,7 @@ pub async fn seal_archive(
          WHERE course_uri = ? AND semester = ? AND status = 'initiated'",
     )
     .bind(&now)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(RING_DID)
     .bind(&bundle_cid)
     .bind(&archive_uri)
@@ -203,8 +211,11 @@ pub async fn seal_archive(
 /// the requested format noted.
 pub async fn export_archive(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingExportArchiveInput>,
 ) -> Result<Json<AppChangalaRingExportArchiveOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
 
     // Validate the archive exists with status 'sealed'.
@@ -258,8 +269,12 @@ pub async fn export_archive(
 /// upload requires an S3-compatible API key for `archive.org`.
 pub async fn upload_to_internet_archive(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingUploadToInternetArchiveInput>,
 ) -> Result<Json<AppChangalaRingUploadToInternetArchiveOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+    auth::require_role(&state, &session.did, "admin").await?;
+
     let now = chrono::Utc::now().to_rfc3339();
 
     // Validate the archive is sealed.

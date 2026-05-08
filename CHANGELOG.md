@@ -128,6 +128,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - All XRPC routes wired: 62 implemented handlers, 0 stubs remaining
 - Total handler code: 5,199 lines across 12 modules
 
+#### Auth Integration (Phase 6)
+- Shared auth helper module (`handlers/auth.rs`) with 6 functions:
+  - `check_not_banned` — ban enforcement on all write operations
+  - `get_role` / `require_role` — role-level hierarchy (admin > classRep > student)
+  - `require_enrolled` — course enrollment verification
+  - `require_class_rep_or_admin` — session lifecycle authorization
+  - `get_course_for_session` — session-to-course URI resolution
+- `RequireAuth` extractor added to 31 handler functions across 7 modules:
+  - `course.rs` — createCourse (admin), enrollStudent, assignClassRep (admin)
+  - `session.rs` — createSession, openSession, closeSession, cancelSession, rescheduleSession (all class-rep-or-admin)
+  - `note.rs` — addKeyword, createNote, versionNote, proposeEdit, acceptEdit (class-rep), rejectEdit (class-rep), registerVote, applyLabel, retractLabel
+  - `brain.rs` — createNode, versionNode, createLink, deleteLink
+  - `archive.rs` — initiateArchive (admin), sealArchive (admin), exportArchive, uploadToInternetArchive (admin)
+  - `moderation.rs` — banDid (admin), liftBan (admin), listBans (admin)
+  - `notification.rs` — getNotifications, markNotificationRead, markAllRead (scoped to authenticated user's DID)
+- Removed all `PLACEHOLDER_DID` constants — every write operation now uses the authenticated user's DID
+- Public read endpoints remain unauthenticated: listCourses, getCourse, getSession, listSessions, getNoteContent, getNoteHistory, getCollectiveNote, listEditProposals, getEnrollments, isBanned, getArchive, all search/feed/graph endpoints
+- Ban enforcement: all write handlers check `bans` table before processing
+- Role-based access control:
+  - Admin-only: course creation, class rep assignment, moderation, archive initiation/sealing/IA upload
+  - Class-rep-or-admin: session lifecycle management, collective note acceptance/rejection
+  - Any authenticated: enrollment, note/keyword/vote/label/brain node operations
+
 ### Changed
 - Migrated from gRPC/protobuf architecture to AT Protocol XRPC/lexicon architecture
 - Replaced proto-based code generation with `atrg generate` lexicon-based generation

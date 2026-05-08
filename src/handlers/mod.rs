@@ -5,6 +5,7 @@
 //! move the implementations here, organised by service domain.
 
 pub mod archive;
+pub mod auth;
 pub mod brain;
 pub mod course;
 pub mod events;

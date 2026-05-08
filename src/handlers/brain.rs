@@ -3,10 +3,12 @@
 use axum::extract::Query;
 use axum::{extract::State, Json};
 
+use atrg_auth::RequireAuth;
 use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
+use super::auth;
 use crate::generated::types::*;
 
 // ---------------------------------------------------------------------------
@@ -25,9 +27,6 @@ fn fake_cid(content: &str) -> String {
 /// Placeholder Ring DID used until real Ring identity is provisioned.
 const RING_DID: &str = "did:web:ring.changala.local";
 
-/// Placeholder DID representing the authenticated caller.
-const PLACEHOLDER_DID: &str = "did:plc:placeholder";
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Nodes
 // ═══════════════════════════════════════════════════════════════════════════
@@ -38,15 +37,18 @@ const PLACEHOLDER_DID: &str = "did:plc:placeholder";
 /// and returns a `ring_ref` + `node_template` for the PDS record.
 pub async fn create_node(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateNodeInput>,
 ) -> Result<Json<AppChangalaRingCreateNodeOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = input
         .created_at
         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
     let cid = fake_cid(&input.content);
     let rkey = atrg_repo::Tid::now().to_string();
-    let node_uri = format!("at://{}/app.changala.brain.node/{}", PLACEHOLDER_DID, rkey);
+    let node_uri = format!("at://{}/app.changala.brain.node/{}", session.did, rkey);
 
     let tags_json = input
         .tags
@@ -60,7 +62,7 @@ pub async fn create_node(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)",
     )
     .bind(&node_uri)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(&input.title)
     .bind(&input.format)
     .bind(RING_DID)
@@ -105,8 +107,11 @@ pub async fn create_node(
 /// to inherit author identity and increments the version counter.
 pub async fn version_node(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingVersionNodeInput>,
 ) -> Result<Json<AppChangalaRingVersionNodeOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
 
     // Fetch the parent node to inherit author_did and get current version.
@@ -216,11 +221,14 @@ pub async fn get_node_content(
 /// graph index from these records.
 pub async fn create_link(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateLinkInput>,
 ) -> Result<Json<AppChangalaRingCreateLinkOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
     let rkey = atrg_repo::Tid::now().to_string();
-    let link_uri = format!("at://{}/app.changala.brain.link/{}", PLACEHOLDER_DID, rkey);
+    let link_uri = format!("at://{}/app.changala.brain.link/{}", session.did, rkey);
 
     sqlx::query(
         "INSERT INTO brain_links (link_uri, from_uri, to_uri, label, created_by, created_at) \
@@ -230,7 +238,7 @@ pub async fn create_link(
     .bind(&input.from_uri)
     .bind(&input.to_uri)
     .bind(&input.label)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(&now)
     .execute(&state.db)
     .await
@@ -260,8 +268,11 @@ pub async fn create_link(
 /// deletion via the firehose and update its graph index accordingly.
 pub async fn delete_link(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingDeleteLinkInput>,
 ) -> Result<Json<AppChangalaRingDeleteLinkOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let result = sqlx::query("DELETE FROM brain_links WHERE link_uri = ?")
         .bind(&input.link_uri)
         .execute(&state.db)

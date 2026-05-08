@@ -208,19 +208,19 @@ Changala has **two layers** and **three runtime components**.
 
 ---
 
-## Phase 6: Auth Integration 🔜 NEXT
+## Phase 6: Auth Integration ✅ COMPLETE
 
-- [ ] Replace placeholder DIDs with real AT Protocol auth (`RequireAuth` extractor)
-- [ ] Role-based access control:
+- [x] Replace placeholder DIDs with real AT Protocol auth (`RequireAuth` extractor)
+- [x] Role-based access control:
   - Admin-only: course creation, class rep assignment, moderation
   - Class-rep-only: session lifecycle management, collective note acceptance
   - Enrolled-only: keyword submission, note creation, voting
-- [ ] Ban enforcement middleware (check bans table before allowing writes)
-- [ ] Institution email domain validation (configurable allowed domains per Ring)
+- [x] Ban enforcement middleware (check bans table before allowing writes)
+- [x] Institution email domain validation (configurable allowed domains per Ring)
 
 ---
 
-## Phase 7: Real Blob Storage
+## Phase 7: Real Blob Storage 🔜 NEXT
 
 - [ ] Replace fake CID generation with real content-addressed storage
 - [ ] Ring blob store implementation (file-backed or S3-compatible)

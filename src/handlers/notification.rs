@@ -3,6 +3,7 @@
 use axum::extract::Query;
 use axum::{extract::State, Json};
 
+use atrg_auth::RequireAuth;
 use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
@@ -24,10 +25,11 @@ fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
 
 /// GET /xrpc/app.changala.globalview.getNotifications
 ///
-/// MVP: returns all notifications (no recipient filtering without auth).
+/// Returns notifications for the authenticated user.
 /// If `unread_only=true`, filters to unread notifications only.
 pub async fn get_notifications(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Query(params): Query<AppChangalaGlobalviewGetNotificationsParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNotificationsOutput>, XrpcError> {
     let limit = clamp_limit(params.limit, 50);
@@ -35,9 +37,9 @@ pub async fn get_notifications(
 
     let mut sql = String::from(
         "SELECT id, recipient_did, reason, subject_uri, read, created_at \
-         FROM notifications WHERE 1=1",
+         FROM notifications WHERE recipient_did = ?",
     );
-    let mut binds: Vec<String> = Vec::new();
+    let mut binds: Vec<String> = vec![session.did.clone()];
 
     if params.unread_only.unwrap_or(false) {
         sql.push_str(" AND read = 0");
@@ -85,15 +87,17 @@ pub async fn get_notifications(
         })
         .collect();
 
-    // Global unread count.
-    let unread_count: i64 =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM notifications WHERE read = 0")
-            .fetch_one(&state.db)
-            .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("Failed to count unread notifications: {e}"),
-            })?;
+    // Unread count for the authenticated user.
+    let unread_count: i64 = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM notifications WHERE read = 0 AND recipient_did = ?",
+    )
+    .bind(&session.did)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Failed to count unread notifications: {e}"),
+    })?;
 
     let cursor = if has_more {
         rows.last().map(|r| r.get::<String, _>("created_at"))
@@ -115,16 +119,19 @@ pub async fn get_notifications(
 /// POST /xrpc/app.changala.globalview.markNotificationRead
 pub async fn mark_notification_read(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaGlobalviewMarkNotificationReadInput>,
 ) -> Result<Json<AppChangalaGlobalviewMarkNotificationReadOutput>, XrpcError> {
-    let result = sqlx::query("UPDATE notifications SET read = 1 WHERE id = ?")
-        .bind(&input.notification_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to mark notification as read: {e}"),
-        })?;
+    let result =
+        sqlx::query("UPDATE notifications SET read = 1 WHERE id = ? AND recipient_did = ?")
+            .bind(&input.notification_id)
+            .bind(&session.did)
+            .execute(&state.db)
+            .await
+            .map_err(|e| XrpcError {
+                name: XrpcErrorName::InternalServerError,
+                message: format!("Failed to mark notification as read: {e}"),
+            })?;
 
     if result.rows_affected() == 0 {
         return Err(XrpcError {
@@ -145,15 +152,18 @@ pub async fn mark_notification_read(
 /// POST /xrpc/app.changala.globalview.markAllRead
 pub async fn mark_all_read(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(_input): Json<AppChangalaGlobalviewMarkAllReadInput>,
 ) -> Result<Json<AppChangalaGlobalviewMarkAllReadOutput>, XrpcError> {
-    let result = sqlx::query("UPDATE notifications SET read = 1 WHERE read = 0")
-        .execute(&state.db)
-        .await
-        .map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to mark all notifications as read: {e}"),
-        })?;
+    let result =
+        sqlx::query("UPDATE notifications SET read = 1 WHERE read = 0 AND recipient_did = ?")
+            .bind(&session.did)
+            .execute(&state.db)
+            .await
+            .map_err(|e| XrpcError {
+                name: XrpcErrorName::InternalServerError,
+                message: format!("Failed to mark all notifications as read: {e}"),
+            })?;
 
     Ok(Json(AppChangalaGlobalviewMarkAllReadOutput {
         marked_count: result.rows_affected() as i64,

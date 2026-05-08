@@ -1,17 +1,23 @@
 //! Moderation service handlers — DID ban management.
 
-use crate::generated::types::*;
-use atrg_core::AppState;
-use atrg_xrpc::{XrpcError, XrpcErrorName};
+use atrg_auth::RequireAuth;
 use axum::extract::Query;
 use axum::{extract::State, Json};
+
+use atrg_core::AppState;
+use atrg_xrpc::{XrpcError, XrpcErrorName};
+
+use crate::generated::types::*;
+
+use super::auth;
 
 /// POST /xrpc/app.changala.ring.banDid
 pub async fn ban_did(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingBanDidInput>,
 ) -> Result<Json<AppChangalaRingBanDidOutput>, XrpcError> {
-    // TODO: verify caller is admin via RequireAuth + role check
+    auth::require_role(&state, &session.did, "admin").await?;
 
     let banned_at = chrono::Utc::now().to_rfc3339();
     let permanent = input.ttl_seconds.is_none();
@@ -46,8 +52,10 @@ pub async fn ban_did(
 /// POST /xrpc/app.changala.ring.liftBan
 pub async fn lift_ban(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingLiftBanInput>,
 ) -> Result<Json<AppChangalaRingLiftBanOutput>, XrpcError> {
+    auth::require_role(&state, &session.did, "admin").await?;
     let result = sqlx::query("DELETE FROM bans WHERE target_did = ?")
         .bind(&input.target_did)
         .execute(&state.db)
@@ -73,8 +81,10 @@ pub async fn lift_ban(
 /// GET /xrpc/app.changala.ring.listBans
 pub async fn list_bans(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Query(params): Query<AppChangalaRingListBansParams>,
 ) -> Result<Json<AppChangalaRingListBansOutput>, XrpcError> {
+    auth::require_role(&state, &session.did, "admin").await?;
     let limit = params.limit.unwrap_or(50).min(100);
 
     let mut query_str =

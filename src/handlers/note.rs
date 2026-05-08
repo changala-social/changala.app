@@ -3,10 +3,12 @@
 use axum::extract::Query;
 use axum::{extract::State, Json};
 
+use atrg_auth::RequireAuth;
 use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
+use super::auth;
 use crate::generated::types::*;
 
 // ---------------------------------------------------------------------------
@@ -26,10 +28,6 @@ fn fake_cid(content: &str) -> String {
 /// Placeholder Ring DID used until real Ring identity is provisioned.
 const RING_DID: &str = "did:web:ring.changala.local";
 
-/// Placeholder DID representing the authenticated caller.
-/// In production this comes from the auth middleware; for MVP we use a constant.
-const PLACEHOLDER_DID: &str = "did:plc:placeholder";
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Keywords
 // ═══════════════════════════════════════════════════════════════════════════
@@ -41,8 +39,11 @@ const PLACEHOLDER_DID: &str = "did:plc:placeholder";
 /// the session `status = 'live'`.
 pub async fn add_keyword(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingAddKeywordInput>,
 ) -> Result<Json<AppChangalaRingAddKeywordOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
 
     // Look up the session and check whether the keyword window is open.
@@ -76,14 +77,14 @@ pub async fn add_keyword(
     }
 
     let rkey = atrg_repo::Tid::now().to_string();
-    let keyword_uri = format!("at://{}/app.changala.keyword/{}", PLACEHOLDER_DID, rkey);
+    let keyword_uri = format!("at://{}/app.changala.keyword/{}", session.did, rkey);
 
     sqlx::query(
         "INSERT INTO keywords (session_uri, did, text, keyword_uri, created_at) \
          VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&input.session_uri)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(&input.text)
     .bind(&keyword_uri)
     .bind(&now)
@@ -122,15 +123,18 @@ pub async fn add_keyword(
 /// the Ring and returns a `ring_ref` + `note_template` for the PDS record.
 pub async fn create_note(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateNoteInput>,
 ) -> Result<Json<AppChangalaRingCreateNoteOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = input
         .created_at
         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
     let cid = fake_cid(&input.content);
     let rkey = atrg_repo::Tid::now().to_string();
-    let note_uri = format!("at://{}/app.changala.note/{}", PLACEHOLDER_DID, rkey);
+    let note_uri = format!("at://{}/app.changala.note/{}", session.did, rkey);
 
     sqlx::query(
         "INSERT INTO notes (uri, session_uri, author_did, format, ring_did, cid, version, \
@@ -139,7 +143,7 @@ pub async fn create_note(
     )
     .bind(&note_uri)
     .bind(&input.session_uri)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(&input.format)
     .bind(RING_DID)
     .bind(&cid)
@@ -179,8 +183,11 @@ pub async fn create_note(
 /// author_did from the parent, increments the version counter.
 pub async fn version_note(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingVersionNoteInput>,
 ) -> Result<Json<AppChangalaRingVersionNoteOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = input
         .created_at
         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
@@ -357,14 +364,17 @@ pub async fn get_note_history(
 /// Creates an `edit_proposals` row with status `pending`.
 pub async fn propose_edit(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingProposeEditInput>,
 ) -> Result<Json<AppChangalaRingProposeEditOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
     let diff_cid = fake_cid(&input.diff);
     let rkey = atrg_repo::Tid::now().to_string();
     let proposal_uri = format!(
         "at://{}/app.changala.collectivenote.proposal/{}",
-        PLACEHOLDER_DID, rkey
+        session.did, rkey
     );
 
     sqlx::query(
@@ -374,7 +384,7 @@ pub async fn propose_edit(
     )
     .bind(&proposal_uri)
     .bind(&input.session_uri)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(RING_DID)
     .bind(&diff_cid)
     .bind(&input.summary)
@@ -404,8 +414,11 @@ pub async fn propose_edit(
 /// and upserts the collective note for the session.
 pub async fn accept_edit(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingAcceptEditInput>,
 ) -> Result<Json<AppChangalaRingAcceptEditOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
 
     // Fetch the proposal and verify it is pending.
@@ -432,12 +445,16 @@ pub async fn accept_edit(
         });
     }
 
+    // Verify the caller is a Class Rep or Admin for this course.
+    let course_uri = auth::get_course_for_session(&state, &session_uri).await?;
+    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+
     // Mark proposal accepted.
     sqlx::query(
         "UPDATE edit_proposals SET status = 'accepted', resolved_at = ?, resolved_by = ? WHERE id = ?",
     )
     .bind(&now)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(proposal_id)
     .execute(&state.db)
     .await
@@ -501,12 +518,15 @@ pub async fn accept_edit(
 /// Rejects a pending edit proposal (Class Rep action).
 pub async fn reject_edit(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRejectEditInput>,
 ) -> Result<Json<AppChangalaRingRejectEditOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
 
-    let proposal = sqlx::query_as::<_, (i64, String)>(
-        "SELECT id, status FROM edit_proposals WHERE proposal_uri = ?",
+    let proposal = sqlx::query_as::<_, (i64, String, String)>(
+        "SELECT id, session_uri, status FROM edit_proposals WHERE proposal_uri = ?",
     )
     .bind(&input.proposal_uri)
     .fetch_optional(&state.db)
@@ -516,7 +536,7 @@ pub async fn reject_edit(
         message: format!("Proposal lookup failed: {e}"),
     })?;
 
-    let (proposal_id, status) = proposal.ok_or_else(|| XrpcError {
+    let (proposal_id, session_uri, status) = proposal.ok_or_else(|| XrpcError {
         name: XrpcErrorName::NotFound,
         message: format!("Proposal not found: {}", input.proposal_uri),
     })?;
@@ -528,11 +548,15 @@ pub async fn reject_edit(
         });
     }
 
+    // Verify the caller is a Class Rep or Admin for this course.
+    let course_uri = auth::get_course_for_session(&state, &session_uri).await?;
+    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+
     sqlx::query(
         "UPDATE edit_proposals SET status = 'rejected', resolved_at = ?, resolved_by = ? WHERE id = ?",
     )
     .bind(&now)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(proposal_id)
     .execute(&state.db)
     .await
@@ -705,8 +729,11 @@ pub async fn list_edit_proposals(
 /// the new total vote count.
 pub async fn register_vote(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRegisterVoteInput>,
 ) -> Result<Json<AppChangalaRingRegisterVoteOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
@@ -715,7 +742,7 @@ pub async fn register_vote(
     )
     .bind(&input.vote_uri)
     .bind(&input.subject_uri)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(&now)
     .execute(&state.db)
     .await
@@ -759,11 +786,14 @@ pub async fn register_vote(
 /// ATProto-native signals stored with `neg = 0` (positive assertion).
 pub async fn apply_label(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingApplyLabelInput>,
 ) -> Result<Json<AppChangalaRingApplyLabelOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
     let rkey = atrg_repo::Tid::now().to_string();
-    let label_uri = format!("at://{}/app.changala.label/{}", PLACEHOLDER_DID, rkey);
+    let label_uri = format!("at://{}/app.changala.label/{}", session.did, rkey);
 
     sqlx::query(
         "INSERT INTO labels (label_uri, subject_uri, val, src_did, neg, created_at) \
@@ -772,7 +802,7 @@ pub async fn apply_label(
     .bind(&label_uri)
     .bind(&input.subject_uri)
     .bind(&input.val)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(&now)
     .execute(&state.db)
     .await
@@ -791,11 +821,14 @@ pub async fn apply_label(
 /// checking for negation records.
 pub async fn retract_label(
     State(state): State<AppState>,
+    RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRetractLabelInput>,
 ) -> Result<Json<AppChangalaRingRetractLabelOutput>, XrpcError> {
+    auth::check_not_banned(&state, &session.did).await?;
+
     let now = chrono::Utc::now().to_rfc3339();
     let rkey = atrg_repo::Tid::now().to_string();
-    let label_uri = format!("at://{}/app.changala.label/{}", PLACEHOLDER_DID, rkey);
+    let label_uri = format!("at://{}/app.changala.label/{}", session.did, rkey);
 
     sqlx::query(
         "INSERT INTO labels (label_uri, subject_uri, val, src_did, neg, created_at) \
@@ -804,7 +837,7 @@ pub async fn retract_label(
     .bind(&label_uri)
     .bind(&input.subject_uri)
     .bind(&input.val)
-    .bind(PLACEHOLDER_DID)
+    .bind(&session.did)
     .bind(&now)
     .execute(&state.db)
     .await
