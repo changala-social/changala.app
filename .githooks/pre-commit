@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit — auto-format before every commit
+
+set -euo pipefail
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.rs$'; then
+  cargo fmt
+  git diff --name-only | grep -E '\.rs$' | xargs -r git add
+fi

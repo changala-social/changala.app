@@ -433,6 +433,7 @@
             };
 
           shellHook = ''
+            git config core.hooksPath .githooks 2>/dev/null || true
             echo ""
             echo "╔══════════════════════════════════════════════════════════════╗"
             echo "║              🔗 Changala Dev Shell                         ║"
