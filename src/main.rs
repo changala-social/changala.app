@@ -11,10 +11,42 @@ mod routes;
 mod state;
 
 /// Changala-specific config loaded from atrg.toml [changala] section.
+///
+/// Every field can be overridden by an environment variable:
+///   CHANGALA_DATABASE_URL  →  [changala] database_url
+///   CHANGALA_S3_ENDPOINT   →  [changala.s3] endpoint
+///   CHANGALA_S3_BUCKET     →  [changala.s3] bucket
+///   CHANGALA_S3_REGION     →  [changala.s3] region
+///   CHANGALA_S3_ACCESS_KEY →  [changala.s3] access_key
+///   CHANGALA_S3_SECRET_KEY →  [changala.s3] secret_key
 #[derive(Debug, serde::Deserialize)]
 struct ChangalaConfig {
     database_url: String,
     s3: blob::S3Config,
+}
+
+impl ChangalaConfig {
+    /// Apply environment variable overrides. Env vars take precedence.
+    fn apply_env_overrides(&mut self) {
+        if let Ok(v) = std::env::var("CHANGALA_DATABASE_URL") {
+            self.database_url = v;
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_ENDPOINT") {
+            self.s3.endpoint = v;
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_BUCKET") {
+            self.s3.bucket = v;
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_REGION") {
+            self.s3.region = v;
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_ACCESS_KEY") {
+            self.s3.access_key = v;
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_SECRET_KEY") {
+            self.s3.secret_key = v;
+        }
+    }
 }
 
 #[tokio::main]
@@ -25,10 +57,13 @@ async fn main() -> anyhow::Result<()> {
     let changala_section = toml_val
         .get("changala")
         .context("Missing [changala] section in atrg.toml")?;
-    let config: ChangalaConfig = changala_section
+    let mut config: ChangalaConfig = changala_section
         .clone()
         .try_into()
         .context("Invalid [changala] config")?;
+
+    // Env vars override atrg.toml — for k8s Secrets, docker .env, etc.
+    config.apply_env_overrides();
 
     // Connect to PostgreSQL
     let pg_pool = PgPool::connect(&config.database_url)
