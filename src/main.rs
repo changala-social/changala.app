@@ -36,17 +36,11 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to connect to PostgreSQL")?;
     tracing::info!(url = %config.database_url, "connected to PostgreSQL");
 
-    // Run Postgres migrations — business data tables
+    // Run all migrations — business tables + atrg internals
     sqlx::migrate!("./pg_migrations")
         .run(&pg_pool)
         .await
-        .context("Failed to run Postgres migrations")?;
-
-    // Run atrg internal migrations (sessions, OAuth states) — same Postgres DB
-    sqlx::migrate!("./migrations")
-        .run(&pg_pool)
-        .await
-        .context("Failed to run atrg internal migrations")?;
+        .context("Failed to run migrations")?;
     tracing::info!("applied all migrations");
 
     // Initialize S3 blob store
