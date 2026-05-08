@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-academic: #2563eb;
+  --color-academic-light: #93bbfd;
+  --color-brain: #7c3aed;
+  --color-brain-light: #c4b5fd;
+  --color-live: #16a34a;
+  --color-live-light: #86efac;
+  --color-cancelled: #dc2626;
+  --color-cancelled-light: #fca5a5;
+  --color-rescheduled: #ea580c;
+  --color-ended: #2563eb;
+  --color-scheduled: #6b7280;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f9fafb;
+  --color-surface-hover: #f3f4f6;
+  --color-border: #e5e7eb;
+  --color-text: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #9ca3af;
+}
+
+@layer base {
+  .dark {
+    --color-surface: #0f172a;
+    --color-surface-alt: #1e293b;
+    --color-surface-hover: #334155;
+    --color-border: #334155;
+    --color-text: #f1f5f9;
+    --color-text-secondary: #94a3b8;
+    --color-text-muted: #64748b;
+  }
+
+  body {
+    @apply bg-surface text-text antialiased;
+  }
+}

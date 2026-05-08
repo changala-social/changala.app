@@ -103,7 +103,7 @@ pub async fn get_notes(
         let placeholders: Vec<String> = (1..=note_uris.len()).map(|i| format!("${i}")).collect();
         let labels_sql = format!(
             "SELECT subject_uri, val, src_did, created_at \
-             FROM labels WHERE subject_uri IN ({}) AND neg = 0",
+             FROM labels WHERE subject_uri IN ({}) AND neg = FALSE",
             placeholders.join(", ")
         );
         let mut lq = sqlx::query(&labels_sql);
@@ -578,7 +578,7 @@ pub async fn get_trending_keywords(
                FROM keywords k \
                JOIN sessions s ON k.session_uri = s.uri \
                WHERE k.created_at > $1 \
-               GROUP BY k.text \
+               GROUP BY k.text, k.session_uri, s.course_uri \
                ORDER BY cnt DESC \
                LIMIT $2";
 

@@ -570,7 +570,7 @@ async fn batch_fetch_labels(
     let placeholders: Vec<String> = (1..=uris.len()).map(|i| format!("${i}")).collect();
     let sql = format!(
         "SELECT subject_uri, val, src_did, created_at \
-         FROM labels WHERE subject_uri IN ({}) AND neg = 0",
+         FROM labels WHERE subject_uri IN ({}) AND neg = FALSE",
         placeholders.join(", ")
     );
 

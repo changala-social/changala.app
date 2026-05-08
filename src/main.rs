@@ -13,12 +13,26 @@ mod state;
 /// Changala-specific config loaded from atrg.toml [changala] section.
 ///
 /// Every field can be overridden by an environment variable:
-///   CHANGALA_DATABASE_URL  →  [changala] database_url
-///   CHANGALA_S3_ENDPOINT   →  [changala.s3] endpoint
-///   CHANGALA_S3_BUCKET     →  [changala.s3] bucket
-///   CHANGALA_S3_REGION     →  [changala.s3] region
-///   CHANGALA_S3_ACCESS_KEY →  [changala.s3] access_key
-///   CHANGALA_S3_SECRET_KEY →  [changala.s3] secret_key
+///   CHANGALA_DATABASE_URL    →  [changala] database_url
+///   CHANGALA_S3_ENDPOINT     →  [changala.s3] endpoint
+///   CHANGALA_S3_BUCKET       →  [changala.s3] bucket
+///   CHANGALA_S3_REGION       →  [changala.s3] region
+///   CHANGALA_S3_ACCESS_KEY   →  [changala.s3] access_key
+///   CHANGALA_S3_SECRET_KEY   →  [changala.s3] secret_key
+///   CHANGALA_S3_PATH_STYLE   →  [changala.s3] path_style  (true/false)
+///
+/// Framework-level config ([app], [auth], [database]) is overridden
+/// via ATRG_* env vars — see atrg-core's env_override module:
+///   ATRG_APP__NAME           →  [app] name
+///   ATRG_APP__HOST           →  [app] host
+///   ATRG_APP__PORT           →  [app] port
+///   ATRG_APP__SECRET_KEY     →  [app] secret_key
+///   ATRG_APP__CORS_ORIGINS   →  [app] cors_origins  (comma-separated)
+///   ATRG_APP__ENVIRONMENT    →  [app] environment
+///   ATRG_AUTH__CLIENT_ID     →  [auth] client_id
+///   ATRG_AUTH__REDIRECT_URI  →  [auth] redirect_uri
+///   ATRG_AUTH__SCOPE         →  [auth] scope
+///   ATRG_DATABASE__URL       →  [database] url
 #[derive(Debug, serde::Deserialize)]
 struct ChangalaConfig {
     database_url: String,
@@ -52,6 +66,17 @@ impl ChangalaConfig {
         if let Ok(v) = std::env::var("CHANGALA_S3_SECRET_KEY") {
             self.s3.secret_key = v;
             overrides.push("CHANGALA_S3_SECRET_KEY");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_S3_PATH_STYLE") {
+            match v.to_lowercase().as_str() {
+                "true" | "1" | "yes" => self.s3.path_style = true,
+                "false" | "0" | "no" => self.s3.path_style = false,
+                _ => tracing::warn!(
+                    value = %v,
+                    "ignoring invalid CHANGALA_S3_PATH_STYLE value (expected true/false)"
+                ),
+            }
+            overrides.push("CHANGALA_S3_PATH_STYLE");
         }
         if overrides.is_empty() {
             tracing::info!("no env var overrides applied, using atrg.toml values");

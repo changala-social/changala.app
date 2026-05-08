@@ -818,7 +818,7 @@ pub async fn register_vote(
 /// POST /xrpc/app.changala.ring.applyLabel
 ///
 /// Applies a quality/knowledge label to a note or brain node. Labels are
-/// ATProto-native signals stored with `neg = 0` (positive assertion).
+/// ATProto-native signals stored with `neg = FALSE` (positive assertion).
 pub async fn apply_label(
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingApplyLabelInput>,
@@ -832,7 +832,7 @@ pub async fn apply_label(
 
     sqlx::query(
         "INSERT INTO labels (label_uri, subject_uri, val, src_did, neg, created_at) \
-         VALUES ($1, $2, $3, $4, 0, $5)",
+         VALUES ($1, $2, $3, $4, FALSE, $5)",
     )
     .bind(&label_uri)
     .bind(&input.subject_uri)
@@ -852,7 +852,7 @@ pub async fn apply_label(
 /// POST /xrpc/app.changala.ring.retractLabel
 ///
 /// Retracts a previously applied label by inserting a **negation** record
-/// (`neg = 1`). The Global View materialises the effective label state by
+/// (`neg = TRUE`). The Global View materialises the effective label state by
 /// checking for negation records.
 pub async fn retract_label(
     RequireAuth(session): RequireAuth,
@@ -867,7 +867,7 @@ pub async fn retract_label(
 
     sqlx::query(
         "INSERT INTO labels (label_uri, subject_uri, val, src_did, neg, created_at) \
-         VALUES ($1, $2, $3, $4, 1, $5)",
+         VALUES ($1, $2, $3, $4, TRUE, $5)",
     )
     .bind(&label_uri)
     .bind(&input.subject_uri)
