@@ -1,7 +1,5 @@
--- Sessions and keywords
-
 CREATE TABLE IF NOT EXISTS sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     uri TEXT NOT NULL UNIQUE,
     rkey TEXT NOT NULL UNIQUE,
     course_uri TEXT NOT NULL REFERENCES courses(uri),
@@ -20,7 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_course ON sessions(course_uri);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 
 CREATE TABLE IF NOT EXISTS keywords (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     session_uri TEXT NOT NULL REFERENCES sessions(uri),
     did TEXT NOT NULL,
     text TEXT NOT NULL,

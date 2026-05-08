@@ -151,6 +151,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Class-rep-or-admin: session lifecycle management, collective note acceptance/rejection
   - Any authenticated: enrollment, note/keyword/vote/label/brain node operations
 
+#### Real Blob Storage + PostgreSQL Migration (Phases 7–8)
+- **PostgreSQL migration**: all 16 business tables moved from SQLite to PostgreSQL
+  - Separate migration directory `pg_migrations/` (9 files) for Postgres schema
+  - atrg internal tables (sessions, OAuth states) remain in SQLite under `migrations/`
+  - SQL dialect changes: `?` → `$1,$2,...` placeholders, `AUTOINCREMENT` → `BIGSERIAL`, `datetime('now')` → chrono-computed timestamps, `INSERT OR IGNORE` → `ON CONFLICT DO NOTHING`, SQLite boolean integers → Postgres `BOOLEAN`
+- **S3 blob store** (`src/blob.rs`):
+  - Content-addressed storage using SHA-256 CIDs (`sha256-{hex}` format)
+  - `put(data)` → stores blob, returns CID
+  - `get(cid)` → retrieves blob bytes
+  - `exists(cid)` / `delete(cid)` for lifecycle management
+  - Compatible with any S3 service (RustFS, MinIO, AWS S3) via `rust-s3` crate
+  - Configurable endpoint, bucket, region, credentials via `[changala.s3]` in atrg.toml
+- **Global application state** (`src/state.rs`):
+  - `Changala` struct holding `PgPool` + `Arc<S3BlobStore>`
+  - `OnceCell`-based global state pattern — initialized once at startup, accessible from all handlers and the Jetstream event processor without Axum state extractor plumbing
+- **Handler migration** — all 62 handlers updated:
+  - `State(state): State<AppState>` removed from all handler params
+  - `state.db` (SQLite) replaced with `crate::state::get().db` (Postgres)
+  - `fake_cid()` replaced with real `app.blobs.put()` in note, brain, and archive handlers
+  - `get_note_content` and `get_node_content` now fetch real content from S3 instead of returning stubs
+  - All auth helper functions (`auth.rs`) now take `&PgPool` directly
+- **Configuration** (`atrg.toml`):
+  - Added `[changala]` section with `database_url` for PostgreSQL connection
+  - Added `[changala.s3]` section with endpoint, bucket, region, credentials, path_style
+- **Dependencies added**: `rust-s3`, `sha2`, `hex`, `once_cell`, `toml`; sqlx now has both `sqlite` and `postgres` features
+
 ### Changed
 - Migrated from gRPC/protobuf architecture to AT Protocol XRPC/lexicon architecture
 - Replaced proto-based code generation with `atrg generate` lexicon-based generation

@@ -1,9 +1,8 @@
 //! Search handlers — full-text search across notes, courses, brain nodes, archives.
 
 use axum::extract::Query;
-use axum::{extract::State, Json};
+use axum::Json;
 
-use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
@@ -21,7 +20,7 @@ fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
     limit.unwrap_or(default).min(100).max(1)
 }
 
-/// Wrap a search term for SQLite LIKE matching.
+/// Wrap a search term for PostgreSQL ILIKE matching.
 fn like_pattern(q: &str) -> String {
     format!("%{q}%")
 }
@@ -32,19 +31,20 @@ fn like_pattern(q: &str) -> String {
 
 /// GET /xrpc/app.changala.globalview.searchNotes
 ///
-/// MVP: uses SQLite LIKE for text search (FTS5 is a Phase 8 optimisation).
-/// Searches notes by `summary LIKE '%q%'`. Optionally filters by course_uri
+/// MVP: uses PostgreSQL ILIKE for text search.
+/// Searches notes by `summary ILIKE '%q%'`. Optionally filters by course_uri
 /// via session JOIN, or by semester via course JOIN.
 pub async fn search_notes(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewSearchNotesParams>,
 ) -> Result<Json<AppChangalaGlobalviewSearchNotesOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let pattern = like_pattern(&params.q);
 
     // We always need to JOIN sessions so we can resolve course_uri; also
     // optionally JOIN courses to filter by semester.
+    let mut param_idx = 2;
     let mut sql = String::from(
         "SELECT n.uri, n.session_uri, n.author_did, n.format, n.ring_did, n.cid, \
                 n.version, n.summary, n.created_at, \
@@ -53,12 +53,13 @@ pub async fn search_notes(
          JOIN sessions s ON n.session_uri = s.uri \
          LEFT JOIN (SELECT subject_uri, COUNT(*) as cnt FROM votes GROUP BY subject_uri) v \
            ON n.uri = v.subject_uri \
-         WHERE n.summary LIKE ?",
+         WHERE n.summary ILIKE $1",
     );
     let mut binds: Vec<String> = vec![pattern.clone()];
 
     if let Some(ref course_uri) = params.course_uri {
-        sql.push_str(" AND s.course_uri = ?");
+        sql.push_str(&format!(" AND s.course_uri = ${param_idx}"));
+        param_idx += 1;
         binds.push(course_uri.clone());
     }
 
@@ -68,16 +69,18 @@ pub async fn search_notes(
             "JOIN sessions s ON n.session_uri = s.uri",
             "JOIN sessions s ON n.session_uri = s.uri JOIN courses c ON s.course_uri = c.uri",
         );
-        sql.push_str(" AND c.semester = ?");
+        sql.push_str(&format!(" AND c.semester = ${param_idx}"));
+        param_idx += 1;
         binds.push(semester.clone());
     }
 
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(" AND n.created_at < ?");
+        sql.push_str(&format!(" AND n.created_at < ${param_idx}"));
+        param_idx += 1;
         binds.push(cursor.clone());
     }
 
-    sql.push_str(" ORDER BY n.created_at DESC LIMIT ?");
+    sql.push_str(&format!(" ORDER BY n.created_at DESC LIMIT ${param_idx}"));
 
     let mut q = sqlx::query(&sql);
     for b in &binds {
@@ -86,11 +89,10 @@ pub async fn search_notes(
     q = q.bind(fetch_limit);
 
     use sqlx::Row;
-    let rows: Vec<sqlx::sqlite::SqliteRow> =
-        q.fetch_all(&state.db).await.map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to search notes: {e}"),
-        })?;
+    let rows: Vec<sqlx::postgres::PgRow> = q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Failed to search notes: {e}"),
+    })?;
 
     let has_more = rows.len() as i64 > limit;
     let rows = if has_more {
@@ -100,15 +102,17 @@ pub async fn search_notes(
     };
 
     // Total hit count (separate COUNT query — expensive but simple for MVP).
+    let mut count_param_idx = 2;
     let mut count_sql = String::from(
         "SELECT COUNT(*) as cnt FROM notes n \
          JOIN sessions s ON n.session_uri = s.uri \
-         WHERE n.summary LIKE ?",
+         WHERE n.summary ILIKE $1",
     );
     let mut count_binds: Vec<String> = vec![pattern];
 
     if let Some(ref course_uri) = params.course_uri {
-        count_sql.push_str(" AND s.course_uri = ?");
+        count_sql.push_str(&format!(" AND s.course_uri = ${count_param_idx}"));
+        count_param_idx += 1;
         count_binds.push(course_uri.clone());
     }
 
@@ -119,23 +123,26 @@ pub async fn search_notes(
                 "JOIN sessions s ON n.session_uri = s.uri JOIN courses c ON s.course_uri = c.uri",
             );
         }
-        count_sql.push_str(" AND c.semester = ?");
+        count_sql.push_str(&format!(" AND c.semester = ${count_param_idx}"));
+        count_param_idx += 1;
         count_binds.push(semester.clone());
     }
+
+    let _ = count_param_idx;
 
     let mut cq = sqlx::query(&count_sql);
     for b in &count_binds {
         cq = cq.bind(b);
     }
     let hits_total: i64 = cq
-        .fetch_one(&state.db)
+        .fetch_one(&app.db)
         .await
         .map(|r| r.get("cnt"))
         .unwrap_or(0);
 
     // Batch-fetch labels.
     let note_uris: Vec<String> = rows.iter().map(|r| r.get::<String, _>("uri")).collect();
-    let labels_map = batch_fetch_labels(&state, &note_uris).await?;
+    let labels_map = batch_fetch_labels(&note_uris).await?;
 
     let notes: Vec<serde_json::Value> = rows
         .iter()
@@ -179,34 +186,37 @@ pub async fn search_notes(
 
 /// GET /xrpc/app.changala.globalview.searchCourses
 pub async fn search_courses(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewSearchCoursesParams>,
 ) -> Result<Json<AppChangalaGlobalviewSearchCoursesOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let pattern = like_pattern(&params.q);
 
+    let mut param_idx = 3;
     let mut sql = String::from(
         "SELECT c.uri, c.title, c.code, c.department, c.semester, c.visibility, \
                 COALESCE(e.cnt, 0) as enrolled_count \
          FROM courses c \
          LEFT JOIN (SELECT course_uri, COUNT(*) as cnt FROM enrollments GROUP BY course_uri) e \
            ON c.uri = e.course_uri \
-         WHERE (c.title LIKE ? OR c.code LIKE ?)",
+         WHERE (c.title ILIKE $1 OR c.code ILIKE $2)",
     );
     let mut binds: Vec<String> = vec![pattern.clone(), pattern.clone()];
 
     if let Some(ref semester) = params.semester {
-        sql.push_str(" AND c.semester = ?");
+        sql.push_str(&format!(" AND c.semester = ${param_idx}"));
+        param_idx += 1;
         binds.push(semester.clone());
     }
 
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(" AND c.created_at < ?");
+        sql.push_str(&format!(" AND c.created_at < ${param_idx}"));
+        param_idx += 1;
         binds.push(cursor.clone());
     }
 
-    sql.push_str(" ORDER BY c.created_at DESC LIMIT ?");
+    sql.push_str(&format!(" ORDER BY c.created_at DESC LIMIT ${param_idx}"));
 
     let mut q = sqlx::query(&sql);
     for b in &binds {
@@ -215,11 +225,10 @@ pub async fn search_courses(
     q = q.bind(fetch_limit);
 
     use sqlx::Row;
-    let rows: Vec<sqlx::sqlite::SqliteRow> =
-        q.fetch_all(&state.db).await.map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to search courses: {e}"),
-        })?;
+    let rows: Vec<sqlx::postgres::PgRow> = q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Failed to search courses: {e}"),
+    })?;
 
     let has_more = rows.len() as i64 > limit;
     let rows = if has_more {
@@ -229,22 +238,26 @@ pub async fn search_courses(
     };
 
     // Total hits.
+    let mut count_param_idx = 3;
     let mut count_sql = String::from(
-        "SELECT COUNT(*) as cnt FROM courses c WHERE (c.title LIKE ? OR c.code LIKE ?)",
+        "SELECT COUNT(*) as cnt FROM courses c WHERE (c.title ILIKE $1 OR c.code ILIKE $2)",
     );
     let mut count_binds: Vec<String> = vec![like_pattern(&params.q), like_pattern(&params.q)];
 
     if let Some(ref semester) = params.semester {
-        count_sql.push_str(" AND c.semester = ?");
+        count_sql.push_str(&format!(" AND c.semester = ${count_param_idx}"));
+        count_param_idx += 1;
         count_binds.push(semester.clone());
     }
+
+    let _ = count_param_idx;
 
     let mut cq = sqlx::query(&count_sql);
     for b in &count_binds {
         cq = cq.bind(b);
     }
     let hits_total: i64 = cq
-        .fetch_one(&state.db)
+        .fetch_one(&app.db)
         .await
         .map(|r| r.get("cnt"))
         .unwrap_or(0);
@@ -289,33 +302,36 @@ pub async fn search_courses(
 
 /// GET /xrpc/app.changala.globalview.searchArchive
 pub async fn search_archive(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewSearchArchiveParams>,
 ) -> Result<Json<AppChangalaGlobalviewSearchArchiveOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let pattern = like_pattern(&params.q);
 
+    let mut param_idx = 3;
     let mut sql = String::from(
         "SELECT a.archive_uri, a.course_uri, c.title as course_title, a.semester, \
                 a.session_count, a.internet_archive_url, a.sealed_at \
          FROM archives a \
          JOIN courses c ON a.course_uri = c.uri \
-         WHERE a.status = 'sealed' AND (c.title LIKE ? OR c.code LIKE ?)",
+         WHERE a.status = 'sealed' AND (c.title ILIKE $1 OR c.code ILIKE $2)",
     );
     let mut binds: Vec<String> = vec![pattern.clone(), pattern.clone()];
 
     if let Some(ref semester) = params.semester {
-        sql.push_str(" AND a.semester = ?");
+        sql.push_str(&format!(" AND a.semester = ${param_idx}"));
+        param_idx += 1;
         binds.push(semester.clone());
     }
 
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(" AND a.sealed_at < ?");
+        sql.push_str(&format!(" AND a.sealed_at < ${param_idx}"));
+        param_idx += 1;
         binds.push(cursor.clone());
     }
 
-    sql.push_str(" ORDER BY a.sealed_at DESC LIMIT ?");
+    sql.push_str(&format!(" ORDER BY a.sealed_at DESC LIMIT ${param_idx}"));
 
     let mut q = sqlx::query(&sql);
     for b in &binds {
@@ -324,11 +340,10 @@ pub async fn search_archive(
     q = q.bind(fetch_limit);
 
     use sqlx::Row;
-    let rows: Vec<sqlx::sqlite::SqliteRow> =
-        q.fetch_all(&state.db).await.map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to search archive: {e}"),
-        })?;
+    let rows: Vec<sqlx::postgres::PgRow> = q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Failed to search archive: {e}"),
+    })?;
 
     let has_more = rows.len() as i64 > limit;
     let rows = if has_more {
@@ -338,24 +353,28 @@ pub async fn search_archive(
     };
 
     // Total hits.
+    let mut count_param_idx = 3;
     let mut count_sql = String::from(
         "SELECT COUNT(*) as cnt FROM archives a \
          JOIN courses c ON a.course_uri = c.uri \
-         WHERE a.status = 'sealed' AND (c.title LIKE ? OR c.code LIKE ?)",
+         WHERE a.status = 'sealed' AND (c.title ILIKE $1 OR c.code ILIKE $2)",
     );
     let mut count_binds: Vec<String> = vec![like_pattern(&params.q), like_pattern(&params.q)];
 
     if let Some(ref semester) = params.semester {
-        count_sql.push_str(" AND a.semester = ?");
+        count_sql.push_str(&format!(" AND a.semester = ${count_param_idx}"));
+        count_param_idx += 1;
         count_binds.push(semester.clone());
     }
+
+    let _ = count_param_idx;
 
     let mut cq = sqlx::query(&count_sql);
     for b in &count_binds {
         cq = cq.bind(b);
     }
     let hits_total: i64 = cq
-        .fetch_one(&state.db)
+        .fetch_one(&app.db)
         .await
         .map(|r| r.get("cnt"))
         .unwrap_or(0);
@@ -396,13 +415,14 @@ pub async fn search_archive(
 
 /// GET /xrpc/app.changala.globalview.searchBrainNodes
 pub async fn search_brain_nodes(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewSearchBrainNodesParams>,
 ) -> Result<Json<AppChangalaGlobalviewSearchBrainNodesOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let pattern = like_pattern(&params.q);
 
+    let mut param_idx = 3;
     let mut sql = String::from(
         "SELECT bn.uri, bn.author_did, bn.title, bn.format, bn.ring_did, bn.cid, \
                 bn.tags, bn.academic_ref, bn.summary, bn.created_at, \
@@ -410,31 +430,34 @@ pub async fn search_brain_nodes(
          FROM brain_nodes bn \
          LEFT JOIN (SELECT subject_uri, COUNT(*) as cnt FROM votes GROUP BY subject_uri) v \
            ON bn.uri = v.subject_uri \
-         WHERE (bn.title LIKE ? OR bn.summary LIKE ?)",
+         WHERE (bn.title ILIKE $1 OR bn.summary ILIKE $2)",
     );
     let mut binds: Vec<String> = vec![pattern.clone(), pattern.clone()];
 
     if let Some(ref author_did) = params.author_did {
-        sql.push_str(" AND bn.author_did = ?");
+        sql.push_str(&format!(" AND bn.author_did = ${param_idx}"));
+        param_idx += 1;
         binds.push(author_did.clone());
     }
 
-    // Tag filtering: for each requested tag, add a LIKE clause on the JSON
+    // Tag filtering: for each requested tag, add an ILIKE clause on the JSON
     // tags column. This is a pragmatic MVP approach — the tags column stores
     // a JSON array string like '["physics","idea"]'.
     if let Some(ref tags) = params.tags {
         for tag in tags {
-            sql.push_str(" AND bn.tags LIKE ?");
+            sql.push_str(&format!(" AND bn.tags ILIKE ${param_idx}"));
+            param_idx += 1;
             binds.push(like_pattern(tag));
         }
     }
 
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(" AND bn.created_at < ?");
+        sql.push_str(&format!(" AND bn.created_at < ${param_idx}"));
+        param_idx += 1;
         binds.push(cursor.clone());
     }
 
-    sql.push_str(" ORDER BY bn.created_at DESC LIMIT ?");
+    sql.push_str(&format!(" ORDER BY bn.created_at DESC LIMIT ${param_idx}"));
 
     let mut q = sqlx::query(&sql);
     for b in &binds {
@@ -443,11 +466,10 @@ pub async fn search_brain_nodes(
     q = q.bind(fetch_limit);
 
     use sqlx::Row;
-    let rows: Vec<sqlx::sqlite::SqliteRow> =
-        q.fetch_all(&state.db).await.map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to search brain nodes: {e}"),
-        })?;
+    let rows: Vec<sqlx::postgres::PgRow> = q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Failed to search brain nodes: {e}"),
+    })?;
 
     let has_more = rows.len() as i64 > limit;
     let rows = if has_more {
@@ -457,30 +479,35 @@ pub async fn search_brain_nodes(
     };
 
     // Total hit count.
+    let mut count_param_idx = 3;
     let mut count_sql = String::from(
         "SELECT COUNT(*) as cnt FROM brain_nodes bn \
-         WHERE (bn.title LIKE ? OR bn.summary LIKE ?)",
+         WHERE (bn.title ILIKE $1 OR bn.summary ILIKE $2)",
     );
     let mut count_binds: Vec<String> = vec![like_pattern(&params.q), like_pattern(&params.q)];
 
     if let Some(ref author_did) = params.author_did {
-        count_sql.push_str(" AND bn.author_did = ?");
+        count_sql.push_str(&format!(" AND bn.author_did = ${count_param_idx}"));
+        count_param_idx += 1;
         count_binds.push(author_did.clone());
     }
 
     if let Some(ref tags) = params.tags {
         for tag in tags {
-            count_sql.push_str(" AND bn.tags LIKE ?");
+            count_sql.push_str(&format!(" AND bn.tags ILIKE ${count_param_idx}"));
+            count_param_idx += 1;
             count_binds.push(like_pattern(tag));
         }
     }
+
+    let _ = count_param_idx;
 
     let mut cq = sqlx::query(&count_sql);
     for b in &count_binds {
         cq = cq.bind(b);
     }
     let hits_total: i64 = cq
-        .fetch_one(&state.db)
+        .fetch_one(&app.db)
         .await
         .map(|r| r.get("cnt"))
         .unwrap_or(0);
@@ -530,7 +557,6 @@ pub async fn search_brain_nodes(
 // ═══════════════════════════════════════════════════════════════════════════
 
 async fn batch_fetch_labels(
-    state: &AppState,
     uris: &[String],
 ) -> Result<std::collections::HashMap<String, Vec<serde_json::Value>>, XrpcError> {
     use sqlx::Row;
@@ -539,10 +565,13 @@ async fn batch_fetch_labels(
         return Ok(std::collections::HashMap::new());
     }
 
-    let placeholders = uris.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let app = crate::state::get();
+
+    let placeholders: Vec<String> = (1..=uris.len()).map(|i| format!("${i}")).collect();
     let sql = format!(
         "SELECT subject_uri, val, src_did, created_at \
-         FROM labels WHERE subject_uri IN ({placeholders}) AND neg = 0"
+         FROM labels WHERE subject_uri IN ({}) AND neg = 0",
+        placeholders.join(", ")
     );
 
     let mut q = sqlx::query(&sql);
@@ -550,11 +579,10 @@ async fn batch_fetch_labels(
         q = q.bind(uri);
     }
 
-    let rows: Vec<sqlx::sqlite::SqliteRow> =
-        q.fetch_all(&state.db).await.map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to fetch labels: {e}"),
-        })?;
+    let rows: Vec<sqlx::postgres::PgRow> = q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Failed to fetch labels: {e}"),
+    })?;
 
     let mut map: std::collections::HashMap<String, Vec<serde_json::Value>> =
         std::collections::HashMap::new();

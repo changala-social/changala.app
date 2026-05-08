@@ -1,5 +1,5 @@
-//! Jetstream event handler — materialises firehose events into the Global View's
-//! SQLite database. Processes record creates/updates/deletes for all
+//! Jetstream event handler — materialises firehose events into the
+//! PostgreSQL database. Processes record creates/updates/deletes for all
 //! app.changala.* collections.
 //!
 //! This module is wired into `main.rs` via `AtrgApp::on_event(handle_event)`.
@@ -8,6 +8,7 @@
 
 use atrg_core::AppState;
 use atrg_stream::JetstreamEvent;
+use sqlx::PgPool;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Top-level dispatcher
@@ -17,7 +18,9 @@ use atrg_stream::JetstreamEvent;
 ///
 /// This handler is called for every event matching the collections configured
 /// in `atrg.toml` `[jetstream].collections`.
-pub async fn handle_event(event: JetstreamEvent, state: AppState) -> anyhow::Result<()> {
+pub async fn handle_event(event: JetstreamEvent, _state: AppState) -> anyhow::Result<()> {
+    let app = crate::state::get();
+
     let commit = match &event.commit {
         Some(c) => c,
         None => return Ok(()), // identity/account events — ignore for now
@@ -34,14 +37,14 @@ pub async fn handle_event(event: JetstreamEvent, state: AppState) -> anyhow::Res
     };
 
     match commit.collection.as_str() {
-        "app.changala.keyword" => handle_keyword(&event.did, record, &state).await?,
-        "app.changala.vote" => handle_vote(&event.did, &commit.rkey, record, &state).await?,
-        "app.changala.label" => handle_label(&event.did, &commit.rkey, record, &state).await?,
+        "app.changala.keyword" => handle_keyword(&event.did, record, &app.db).await?,
+        "app.changala.vote" => handle_vote(&event.did, &commit.rkey, record, &app.db).await?,
+        "app.changala.label" => handle_label(&event.did, &commit.rkey, record, &app.db).await?,
         "app.changala.brain.node" => {
-            handle_brain_node(&event.did, &commit.rkey, record, &state).await?
+            handle_brain_node(&event.did, &commit.rkey, record, &app.db).await?
         }
         "app.changala.brain.link" => {
-            handle_brain_link(&event.did, &commit.rkey, record, &state).await?
+            handle_brain_link(&event.did, &commit.rkey, record, &app.db).await?
         }
         _ => {
             tracing::debug!(collection = %commit.collection, "ignoring unhandled collection");
@@ -58,12 +61,8 @@ pub async fn handle_event(event: JetstreamEvent, state: AppState) -> anyhow::Res
 /// Materialise a keyword record from the firehose.
 ///
 /// Inserts into the `keywords` table. Duplicate (session_uri, did, text)
-/// tuples are silently ignored via `ON CONFLICT IGNORE`.
-async fn handle_keyword(
-    did: &str,
-    record: &serde_json::Value,
-    state: &AppState,
-) -> anyhow::Result<()> {
+/// tuples are silently ignored via `ON CONFLICT DO NOTHING`.
+async fn handle_keyword(did: &str, record: &serde_json::Value, db: &PgPool) -> anyhow::Result<()> {
     let session_uri = record["sessionUri"].as_str().unwrap_or_default();
     let text = record["text"].as_str().unwrap_or_default();
     let created_at = record["createdAt"].as_str().unwrap_or_default();
@@ -74,15 +73,15 @@ async fn handle_keyword(
     }
 
     sqlx::query(
-        "INSERT OR IGNORE INTO keywords (session_uri, did, text, keyword_uri, created_at) \
-         VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO keywords (session_uri, did, text, keyword_uri, created_at) \
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
     )
     .bind(session_uri)
     .bind(did)
     .bind(text)
     .bind("") // keyword_uri not available from firehose record
     .bind(created_at)
-    .execute(&state.db)
+    .execute(db)
     .await?;
 
     tracing::info!(did, session_uri, text, "materialised keyword from firehose");
@@ -101,7 +100,7 @@ async fn handle_vote(
     did: &str,
     rkey: &str,
     record: &serde_json::Value,
-    state: &AppState,
+    db: &PgPool,
 ) -> anyhow::Result<()> {
     let subject_uri = record["subjectUri"].as_str().unwrap_or_default();
     let created_at = record["createdAt"].as_str().unwrap_or_default();
@@ -114,14 +113,14 @@ async fn handle_vote(
     let vote_uri = format!("at://{did}/app.changala.vote/{rkey}");
 
     sqlx::query(
-        "INSERT OR IGNORE INTO votes (vote_uri, subject_uri, voter_did, created_at) \
-         VALUES (?, ?, ?, ?)",
+        "INSERT INTO votes (vote_uri, subject_uri, voter_did, created_at) \
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
     )
     .bind(&vote_uri)
     .bind(subject_uri)
     .bind(did)
     .bind(created_at)
-    .execute(&state.db)
+    .execute(db)
     .await?;
 
     tracing::info!(did, subject_uri, "materialised vote from firehose");
@@ -141,7 +140,7 @@ async fn handle_label(
     did: &str,
     rkey: &str,
     record: &serde_json::Value,
-    state: &AppState,
+    db: &PgPool,
 ) -> anyhow::Result<()> {
     let subject_uri = record["subjectUri"].as_str().unwrap_or_default();
     let val = record["val"].as_str().unwrap_or_default();
@@ -157,7 +156,7 @@ async fn handle_label(
 
     sqlx::query(
         "INSERT INTO labels (label_uri, subject_uri, val, src_did, neg, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?)",
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&label_uri)
     .bind(subject_uri)
@@ -165,7 +164,7 @@ async fn handle_label(
     .bind(did)
     .bind(neg)
     .bind(created_at)
-    .execute(&state.db)
+    .execute(db)
     .await?;
 
     tracing::info!(
@@ -188,13 +187,13 @@ async fn handle_label(
 /// format, tags), and optional academic cross-references. The node URI is
 /// constructed from the author DID + rkey.
 ///
-/// Uses `INSERT OR REPLACE` so that versioned updates (same URI, new
-/// version) overwrite the previous row.
+/// Uses `INSERT ... ON CONFLICT (uri) DO UPDATE` so that versioned updates
+/// (same URI, new version) overwrite the previous row.
 async fn handle_brain_node(
     did: &str,
     rkey: &str,
     record: &serde_json::Value,
-    state: &AppState,
+    db: &PgPool,
 ) -> anyhow::Result<()> {
     let title = record["title"].as_str().unwrap_or_default();
     let format = record["format"].as_str().unwrap_or("markdown");
@@ -226,9 +225,13 @@ async fn handle_brain_node(
     let uri = format!("at://{did}/app.changala.brain.node/{rkey}");
 
     sqlx::query(
-        "INSERT OR REPLACE INTO brain_nodes \
+        "INSERT INTO brain_nodes \
          (uri, author_did, title, format, ring_did, cid, tags, academic_ref, version, summary, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
+         ON CONFLICT (uri) DO UPDATE SET \
+           title = EXCLUDED.title, format = EXCLUDED.format, ring_did = EXCLUDED.ring_did, \
+           cid = EXCLUDED.cid, tags = EXCLUDED.tags, academic_ref = EXCLUDED.academic_ref, \
+           version = EXCLUDED.version, summary = EXCLUDED.summary, created_at = EXCLUDED.created_at",
     )
     .bind(&uri)
     .bind(did)
@@ -241,7 +244,7 @@ async fn handle_brain_node(
     .bind(version)
     .bind(summary)
     .bind(created_at)
-    .execute(&state.db)
+    .execute(db)
     .await?;
 
     tracing::info!(did, uri = %uri, title, "materialised brain node from firehose");
@@ -261,7 +264,7 @@ async fn handle_brain_link(
     did: &str,
     rkey: &str,
     record: &serde_json::Value,
-    state: &AppState,
+    db: &PgPool,
 ) -> anyhow::Result<()> {
     let from_uri = record["fromUri"].as_str().unwrap_or_default();
     let to_uri = record["toUri"].as_str().unwrap_or_default();
@@ -278,9 +281,9 @@ async fn handle_brain_link(
     let link_uri = format!("at://{did}/app.changala.brain.link/{rkey}");
 
     sqlx::query(
-        "INSERT OR IGNORE INTO brain_links \
+        "INSERT INTO brain_links \
          (link_uri, from_uri, to_uri, label, created_by, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?)",
+         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
     )
     .bind(&link_uri)
     .bind(from_uri)
@@ -288,7 +291,7 @@ async fn handle_brain_link(
     .bind(label)
     .bind(did)
     .bind(created_at)
-    .execute(&state.db)
+    .execute(db)
     .await?;
 
     tracing::info!(

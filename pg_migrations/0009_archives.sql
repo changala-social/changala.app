@@ -1,7 +1,5 @@
--- Archives
-
 CREATE TABLE IF NOT EXISTS archives (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     archive_uri TEXT,
     course_uri TEXT NOT NULL,
     semester TEXT NOT NULL,

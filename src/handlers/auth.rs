@@ -3,16 +3,16 @@
 //! Provides role checks, ban enforcement, and enrollment verification
 //! used across all handler modules.
 
-use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
+use sqlx::PgPool;
 
 /// Check if a DID is banned. Returns Err(Forbidden) if actively banned.
-pub async fn check_not_banned(state: &AppState, did: &str) -> Result<(), XrpcError> {
+pub async fn check_not_banned(db: &PgPool, did: &str) -> Result<(), XrpcError> {
     let row = sqlx::query_as::<_, (i64,)>(
-        "SELECT 1 FROM bans WHERE target_did = ? AND (permanent = 1 OR expires_at > datetime('now'))",
+        "SELECT 1 FROM bans WHERE target_did = $1 AND (permanent = TRUE OR expires_at > NOW()::TEXT)",
     )
     .bind(did)
-    .fetch_optional(&state.db)
+    .fetch_optional(db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -30,14 +30,14 @@ pub async fn check_not_banned(state: &AppState, did: &str) -> Result<(), XrpcErr
 }
 
 /// Get the highest-privilege role for a DID. Returns None if no membership.
-pub async fn get_role(state: &AppState, did: &str) -> Result<Option<String>, XrpcError> {
+pub async fn get_role(db: &PgPool, did: &str) -> Result<Option<String>, XrpcError> {
     sqlx::query_scalar::<_, String>(
-        "SELECT role FROM memberships WHERE did = ? \
+        "SELECT role FROM memberships WHERE did = $1 \
          ORDER BY CASE role WHEN 'admin' THEN 1 WHEN 'classRep' THEN 2 WHEN 'student' THEN 3 ELSE 4 END \
          LIMIT 1",
     )
     .bind(did)
-    .fetch_optional(&state.db)
+    .fetch_optional(db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -46,8 +46,8 @@ pub async fn get_role(state: &AppState, did: &str) -> Result<Option<String>, Xrp
 }
 
 /// Require at least the given role level. admin > classRep > student.
-pub async fn require_role(state: &AppState, did: &str, required: &str) -> Result<(), XrpcError> {
-    let role = get_role(state, did).await?.ok_or_else(|| XrpcError {
+pub async fn require_role(db: &PgPool, did: &str, required: &str) -> Result<(), XrpcError> {
+    let role = get_role(db, did).await?.ok_or_else(|| XrpcError {
         name: XrpcErrorName::Forbidden,
         message: "No verified membership found — verify your institution email first".to_string(),
     })?;
@@ -63,16 +63,12 @@ pub async fn require_role(state: &AppState, did: &str, required: &str) -> Result
 }
 
 /// Check if a DID is enrolled in a specific course.
-pub async fn require_enrolled(
-    state: &AppState,
-    did: &str,
-    course_uri: &str,
-) -> Result<(), XrpcError> {
+pub async fn require_enrolled(db: &PgPool, did: &str, course_uri: &str) -> Result<(), XrpcError> {
     let row =
-        sqlx::query_as::<_, (i64,)>("SELECT 1 FROM enrollments WHERE did = ? AND course_uri = ?")
+        sqlx::query_as::<_, (i64,)>("SELECT 1 FROM enrollments WHERE did = $1 AND course_uri = $2")
             .bind(did)
             .bind(course_uri)
-            .fetch_optional(&state.db)
+            .fetch_optional(db)
             .await
             .map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
@@ -91,16 +87,16 @@ pub async fn require_enrolled(
 
 /// Check if a DID is the class rep for a course, or an admin.
 pub async fn require_class_rep_or_admin(
-    state: &AppState,
+    db: &PgPool,
     did: &str,
     course_uri: &str,
 ) -> Result<(), XrpcError> {
     // Check if class rep
     let is_rep =
-        sqlx::query_as::<_, (i64,)>("SELECT 1 FROM courses WHERE uri = ? AND class_rep_did = ?")
+        sqlx::query_as::<_, (i64,)>("SELECT 1 FROM courses WHERE uri = $1 AND class_rep_did = $2")
             .bind(course_uri)
             .bind(did)
-            .fetch_optional(&state.db)
+            .fetch_optional(db)
             .await
             .map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
@@ -112,7 +108,7 @@ pub async fn require_class_rep_or_admin(
     }
 
     // Fall back to admin check
-    let role = get_role(state, did).await?;
+    let role = get_role(db, did).await?;
     if role.as_deref() == Some("admin") {
         return Ok(());
     }
@@ -124,13 +120,10 @@ pub async fn require_class_rep_or_admin(
 }
 
 /// Look up the course_uri for a given session_uri.
-pub async fn get_course_for_session(
-    state: &AppState,
-    session_uri: &str,
-) -> Result<String, XrpcError> {
-    sqlx::query_scalar::<_, String>("SELECT course_uri FROM sessions WHERE uri = ?")
+pub async fn get_course_for_session(db: &PgPool, session_uri: &str) -> Result<String, XrpcError> {
+    sqlx::query_scalar::<_, String>("SELECT course_uri FROM sessions WHERE uri = $1")
         .bind(session_uri)
-        .fetch_optional(&state.db)
+        .fetch_optional(db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,

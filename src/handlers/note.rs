@@ -1,10 +1,9 @@
 //! Note service handlers — keywords, notes, collective notes, votes, labels.
 
 use axum::extract::Query;
-use axum::{extract::State, Json};
+use axum::Json;
 
 use atrg_auth::RequireAuth;
-use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
@@ -14,16 +13,6 @@ use crate::generated::types::*;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Generate a deterministic fake CID from content, for MVP blob-less operation.
-/// Real CID generation will use multihash + multicodec once the Ring has blob storage.
-fn fake_cid(content: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    content.hash(&mut hasher);
-    format!("bafyrei{:016x}", hasher.finish())
-}
 
 /// Placeholder Ring DID used until real Ring identity is provisioned.
 const RING_DID: &str = "did:web:ring.changala.local";
@@ -38,20 +27,20 @@ const RING_DID: &str = "did:web:ring.changala.local";
 /// The keyword window is open when `keyword_window_expires_at > now()` **or**
 /// the session `status = 'live'`.
 pub async fn add_keyword(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingAddKeywordInput>,
 ) -> Result<Json<AppChangalaRingAddKeywordOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
     // Look up the session and check whether the keyword window is open.
     let row = sqlx::query_as::<_, (String, Option<String>)>(
-        "SELECT status, keyword_window_expires_at FROM sessions WHERE uri = ?",
+        "SELECT status, keyword_window_expires_at FROM sessions WHERE uri = $1",
     )
     .bind(&input.session_uri)
-    .fetch_optional(&state.db)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -81,18 +70,18 @@ pub async fn add_keyword(
 
     sqlx::query(
         "INSERT INTO keywords (session_uri, did, text, keyword_uri, created_at) \
-         VALUES (?, ?, ?, ?, ?)",
+         VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(&input.session_uri)
     .bind(&session.did)
     .bind(&input.text)
     .bind(&keyword_uri)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| {
         // UNIQUE(session_uri, did, text) — duplicate keyword by this user
-        if e.to_string().contains("UNIQUE") {
+        if e.to_string().contains("UNIQUE") || e.to_string().contains("duplicate key") {
             XrpcError {
                 name: XrpcErrorName::InvalidRequest,
                 message: "You already submitted this keyword for this session".to_string(),
@@ -122,24 +111,31 @@ pub async fn add_keyword(
 /// Creates a new note (version 1) for a session. Stores a blob reference on
 /// the Ring and returns a `ring_ref` + `note_template` for the PDS record.
 pub async fn create_note(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateNoteInput>,
 ) -> Result<Json<AppChangalaRingCreateNoteOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = input
         .created_at
         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
-    let cid = fake_cid(&input.content);
+    let cid = app
+        .blobs
+        .put(input.content.as_bytes())
+        .await
+        .map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to store content: {e}"),
+        })?;
     let rkey = atrg_repo::Tid::now().to_string();
     let note_uri = format!("at://{}/app.changala.note/{}", session.did, rkey);
 
     sqlx::query(
         "INSERT INTO notes (uri, session_uri, author_did, format, ring_did, cid, version, \
          parent_note_uri, summary, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)",
+         VALUES ($1, $2, $3, $4, $5, $6, 1, NULL, $7, $8)",
     )
     .bind(&note_uri)
     .bind(&input.session_uri)
@@ -149,7 +145,7 @@ pub async fn create_note(
     .bind(&cid)
     .bind(&input.summary)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -182,11 +178,11 @@ pub async fn create_note(
 /// Creates a new version of an existing note. Inherits session_uri and
 /// author_did from the parent, increments the version counter.
 pub async fn version_note(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingVersionNoteInput>,
 ) -> Result<Json<AppChangalaRingVersionNoteOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = input
         .created_at
@@ -194,10 +190,10 @@ pub async fn version_note(
 
     // Fetch the parent note to inherit session + author and get current version.
     let parent = sqlx::query_as::<_, (String, String, i64)>(
-        "SELECT session_uri, author_did, version FROM notes WHERE uri = ?",
+        "SELECT session_uri, author_did, version FROM notes WHERE uri = $1",
     )
     .bind(&input.parent_note_uri)
-    .fetch_optional(&state.db)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -210,14 +206,21 @@ pub async fn version_note(
     })?;
 
     let new_version = parent_version + 1;
-    let cid = fake_cid(&input.content);
+    let cid = app
+        .blobs
+        .put(input.content.as_bytes())
+        .await
+        .map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to store content: {e}"),
+        })?;
     let rkey = atrg_repo::Tid::now().to_string();
     let note_uri = format!("at://{}/app.changala.note/{}", author_did, rkey);
 
     sqlx::query(
         "INSERT INTO notes (uri, session_uri, author_did, format, ring_did, cid, version, \
          parent_note_uri, summary, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(&note_uri)
     .bind(&session_uri)
@@ -229,7 +232,7 @@ pub async fn version_note(
     .bind(&input.parent_note_uri)
     .bind(&input.summary)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -260,21 +263,31 @@ pub async fn version_note(
 
 /// GET /xrpc/app.changala.ring.getNoteContent
 ///
-/// Retrieves note content from the Ring by CID. In MVP, the Ring does not
-/// have actual blob storage, so this returns a stub indicating the CID that
-/// should be fetched.
+/// Retrieves note content from the Ring by CID using the S3 blob store.
 pub async fn get_note_content(
-    State(_state): State<AppState>,
     Query(params): Query<AppChangalaRingGetNoteContentParams>,
 ) -> Result<Json<AppChangalaRingGetNoteContentOutput>, XrpcError> {
-    // In production this would stream the blob from the Ring's content-
-    // addressed store. For MVP we return a stub with the CID reference.
+    let app = crate::state::get();
+
+    let content_bytes = app.blobs.get(&params.cid).await.map_err(|e| XrpcError {
+        name: XrpcErrorName::NotFound,
+        message: format!("Blob not found: {e}"),
+    })?;
+    let content = String::from_utf8_lossy(&content_bytes).to_string();
+
+    let format = sqlx::query_scalar::<_, String>("SELECT format FROM notes WHERE cid = $1 LIMIT 1")
+        .bind(&params.cid)
+        .fetch_optional(&app.db)
+        .await
+        .map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("DB error: {e}"),
+        })?
+        .unwrap_or_else(|| "plaintext".to_string());
+
     Ok(Json(AppChangalaRingGetNoteContentOutput {
-        format: "plaintext".to_string(),
-        content: format!(
-            "Content stored on Ring ({}) — fetch via CID: {}",
-            params.ring_did, params.cid
-        ),
+        format,
+        content,
     }))
 }
 
@@ -283,15 +296,16 @@ pub async fn get_note_content(
 /// Returns the full version chain of a note. All versions share the same
 /// session_uri + author_did as the original and are ordered by version.
 pub async fn get_note_history(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetNoteHistoryParams>,
 ) -> Result<Json<AppChangalaRingGetNoteHistoryOutput>, XrpcError> {
+    let app = crate::state::get();
+
     // First, find the note itself so we can get session_uri + author_did.
     let root = sqlx::query_as::<_, (String, String)>(
-        "SELECT session_uri, author_did FROM notes WHERE uri = ?",
+        "SELECT session_uri, author_did FROM notes WHERE uri = $1",
     )
     .bind(&params.note_uri)
-    .fetch_optional(&state.db)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -318,12 +332,12 @@ pub async fn get_note_history(
     >(
         "SELECT uri, ring_did, cid, version, parent_note_uri, summary, created_at \
          FROM notes \
-         WHERE session_uri = ? AND author_did = ? \
+         WHERE session_uri = $1 AND author_did = $2 \
          ORDER BY version ASC",
     )
     .bind(&session_uri)
     .bind(&author_did)
-    .fetch_all(&state.db)
+    .fetch_all(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -363,14 +377,21 @@ pub async fn get_note_history(
 /// Proposes an edit (diff) to the collective note for a session.
 /// Creates an `edit_proposals` row with status `pending`.
 pub async fn propose_edit(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingProposeEditInput>,
 ) -> Result<Json<AppChangalaRingProposeEditOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
-    let diff_cid = fake_cid(&input.diff);
+    let diff_cid = app
+        .blobs
+        .put(input.diff.as_bytes())
+        .await
+        .map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to store content: {e}"),
+        })?;
     let rkey = atrg_repo::Tid::now().to_string();
     let proposal_uri = format!(
         "at://{}/app.changala.collectivenote.proposal/{}",
@@ -380,7 +401,7 @@ pub async fn propose_edit(
     sqlx::query(
         "INSERT INTO edit_proposals \
          (proposal_uri, session_uri, proposer_did, diff_ring_did, diff_cid, status, summary, created_at) \
-         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)",
+         VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)",
     )
     .bind(&proposal_uri)
     .bind(&input.session_uri)
@@ -389,7 +410,7 @@ pub async fn propose_edit(
     .bind(&diff_cid)
     .bind(&input.summary)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -413,20 +434,20 @@ pub async fn propose_edit(
 /// (auth enforcement is deferred to middleware). Updates the proposal status
 /// and upserts the collective note for the session.
 pub async fn accept_edit(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingAcceptEditInput>,
 ) -> Result<Json<AppChangalaRingAcceptEditOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
     // Fetch the proposal and verify it is pending.
     let proposal = sqlx::query_as::<_, (i64, String, String)>(
-        "SELECT id, session_uri, status FROM edit_proposals WHERE proposal_uri = ?",
+        "SELECT id, session_uri, status FROM edit_proposals WHERE proposal_uri = $1",
     )
     .bind(&input.proposal_uri)
-    .fetch_optional(&state.db)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -446,17 +467,17 @@ pub async fn accept_edit(
     }
 
     // Verify the caller is a Class Rep or Admin for this course.
-    let course_uri = auth::get_course_for_session(&state, &session_uri).await?;
-    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+    let course_uri = auth::get_course_for_session(&app.db, &session_uri).await?;
+    auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;
 
     // Mark proposal accepted.
     sqlx::query(
-        "UPDATE edit_proposals SET status = 'accepted', resolved_at = ?, resolved_by = ? WHERE id = ?",
+        "UPDATE edit_proposals SET status = 'accepted', resolved_at = $1, resolved_by = $2 WHERE id = $3",
     )
     .bind(&now)
     .bind(&session.did)
     .bind(proposal_id)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -464,13 +485,21 @@ pub async fn accept_edit(
     })?;
 
     // Upsert collective note — increment version or insert first version.
-    let new_cid = fake_cid(&format!("collective-{}-{}", session_uri, now));
+    let content = format!("collective-{}-{}", session_uri, now);
+    let new_cid = app
+        .blobs
+        .put(content.as_bytes())
+        .await
+        .map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to store archive bundle: {e}"),
+        })?;
 
     // Try to fetch existing collective note to get current version.
     let existing_version =
-        sqlx::query_scalar::<_, i64>("SELECT version FROM collective_notes WHERE session_uri = ?")
+        sqlx::query_scalar::<_, i64>("SELECT version FROM collective_notes WHERE session_uri = $1")
             .bind(&session_uri)
-            .fetch_optional(&state.db)
+            .fetch_optional(&app.db)
             .await
             .map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
@@ -481,7 +510,7 @@ pub async fn accept_edit(
 
     sqlx::query(
         "INSERT INTO collective_notes (session_uri, ring_did, cid, version, updated_at) \
-         VALUES (?, ?, ?, ?, ?) \
+         VALUES ($1, $2, $3, $4, $5) \
          ON CONFLICT(session_uri) DO UPDATE SET \
            cid = excluded.cid, \
            version = excluded.version, \
@@ -492,7 +521,7 @@ pub async fn accept_edit(
     .bind(&new_cid)
     .bind(new_version)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -517,19 +546,19 @@ pub async fn accept_edit(
 ///
 /// Rejects a pending edit proposal (Class Rep action).
 pub async fn reject_edit(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRejectEditInput>,
 ) -> Result<Json<AppChangalaRingRejectEditOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
     let proposal = sqlx::query_as::<_, (i64, String, String)>(
-        "SELECT id, session_uri, status FROM edit_proposals WHERE proposal_uri = ?",
+        "SELECT id, session_uri, status FROM edit_proposals WHERE proposal_uri = $1",
     )
     .bind(&input.proposal_uri)
-    .fetch_optional(&state.db)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -549,16 +578,16 @@ pub async fn reject_edit(
     }
 
     // Verify the caller is a Class Rep or Admin for this course.
-    let course_uri = auth::get_course_for_session(&state, &session_uri).await?;
-    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+    let course_uri = auth::get_course_for_session(&app.db, &session_uri).await?;
+    auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;
 
     sqlx::query(
-        "UPDATE edit_proposals SET status = 'rejected', resolved_at = ?, resolved_by = ? WHERE id = ?",
+        "UPDATE edit_proposals SET status = 'rejected', resolved_at = $1, resolved_by = $2 WHERE id = $3",
     )
     .bind(&now)
     .bind(&session.did)
     .bind(proposal_id)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -575,14 +604,15 @@ pub async fn reject_edit(
 /// Returns the current collective note for a session, including the list
 /// of contributor DIDs (authors of accepted proposals).
 pub async fn get_collective_note(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetCollectiveNoteParams>,
 ) -> Result<Json<AppChangalaRingGetCollectiveNoteOutput>, XrpcError> {
+    let app = crate::state::get();
+
     let row = sqlx::query_as::<_, (String, String, i64, String)>(
-        "SELECT ring_did, cid, version, updated_at FROM collective_notes WHERE session_uri = ?",
+        "SELECT ring_did, cid, version, updated_at FROM collective_notes WHERE session_uri = $1",
     )
     .bind(&params.session_uri)
-    .fetch_optional(&state.db)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -600,11 +630,11 @@ pub async fn get_collective_note(
     // Gather contributor DIDs from accepted proposals.
     let contributor_dids: Vec<String> = sqlx::query_scalar::<_, String>(
         "SELECT DISTINCT proposer_did FROM edit_proposals \
-         WHERE session_uri = ? AND status = 'accepted' \
+         WHERE session_uri = $1 AND status = 'accepted' \
          ORDER BY proposer_did",
     )
     .bind(&params.session_uri)
-    .fetch_all(&state.db)
+    .fetch_all(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -630,30 +660,35 @@ pub async fn get_collective_note(
 /// Lists edit proposals for a session with optional status filter and
 /// cursor-based pagination on `created_at`.
 pub async fn list_edit_proposals(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingListEditProposalsParams>,
 ) -> Result<Json<AppChangalaRingListEditProposalsOutput>, XrpcError> {
+    let app = crate::state::get();
+
     let limit = params.limit.unwrap_or(50).min(100);
 
     // Build query dynamically based on optional filters.
+    // PostgreSQL uses numbered placeholders ($1, $2, ...) so we track the index.
     let mut sql = String::from(
         "SELECT proposal_uri, session_uri, proposer_did, diff_ring_did, diff_cid, \
                 status, summary, resolved_at, resolved_by, created_at \
-         FROM edit_proposals WHERE session_uri = ?",
+         FROM edit_proposals WHERE session_uri = $1",
     );
     let mut bind_values: Vec<String> = vec![params.session_uri.clone()];
+    let mut param_idx = 2u32;
 
     if let Some(ref status_filter) = params.status_filter {
-        sql.push_str(" AND status = ?");
+        sql.push_str(&format!(" AND status = ${param_idx}"));
         bind_values.push(status_filter.clone());
+        param_idx += 1;
     }
 
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(" AND created_at > ?");
+        sql.push_str(&format!(" AND created_at > ${param_idx}"));
         bind_values.push(cursor.clone());
+        param_idx += 1;
     }
 
-    sql.push_str(" ORDER BY created_at ASC LIMIT ?");
+    sql.push_str(&format!(" ORDER BY created_at ASC LIMIT ${param_idx}"));
 
     // sqlx requires static bind counts, so we build with the maximum shape
     // and use a raw query approach.
@@ -680,7 +715,7 @@ pub async fn list_edit_proposals(
     }
     query = query.bind(limit);
 
-    let results = query.fetch_all(&state.db).await.map_err(|e| XrpcError {
+    let results = query.fetch_all(&app.db).await.map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
         message: format!("Failed to list proposals: {e}"),
     })?;
@@ -728,26 +763,26 @@ pub async fn list_edit_proposals(
 /// once per subject (enforced by UNIQUE(subject_uri, voter_did)). Returns
 /// the new total vote count.
 pub async fn register_vote(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRegisterVoteInput>,
 ) -> Result<Json<AppChangalaRingRegisterVoteOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
         "INSERT INTO votes (vote_uri, subject_uri, voter_did, created_at) \
-         VALUES (?, ?, ?, ?)",
+         VALUES ($1, $2, $3, $4)",
     )
     .bind(&input.vote_uri)
     .bind(&input.subject_uri)
     .bind(&session.did)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| {
-        if e.to_string().contains("UNIQUE") {
+        if e.to_string().contains("UNIQUE") || e.to_string().contains("duplicate key") {
             XrpcError {
                 name: XrpcErrorName::InvalidRequest,
                 message: "You have already voted on this subject".to_string(),
@@ -761,9 +796,9 @@ pub async fn register_vote(
     })?;
 
     let total_votes =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM votes WHERE subject_uri = ?")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM votes WHERE subject_uri = $1")
             .bind(&input.subject_uri)
-            .fetch_one(&state.db)
+            .fetch_one(&app.db)
             .await
             .map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
@@ -785,11 +820,11 @@ pub async fn register_vote(
 /// Applies a quality/knowledge label to a note or brain node. Labels are
 /// ATProto-native signals stored with `neg = 0` (positive assertion).
 pub async fn apply_label(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingApplyLabelInput>,
 ) -> Result<Json<AppChangalaRingApplyLabelOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let rkey = atrg_repo::Tid::now().to_string();
@@ -797,14 +832,14 @@ pub async fn apply_label(
 
     sqlx::query(
         "INSERT INTO labels (label_uri, subject_uri, val, src_did, neg, created_at) \
-         VALUES (?, ?, ?, ?, 0, ?)",
+         VALUES ($1, $2, $3, $4, 0, $5)",
     )
     .bind(&label_uri)
     .bind(&input.subject_uri)
     .bind(&input.val)
     .bind(&session.did)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -820,11 +855,11 @@ pub async fn apply_label(
 /// (`neg = 1`). The Global View materialises the effective label state by
 /// checking for negation records.
 pub async fn retract_label(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRetractLabelInput>,
 ) -> Result<Json<AppChangalaRingRetractLabelOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let rkey = atrg_repo::Tid::now().to_string();
@@ -832,14 +867,14 @@ pub async fn retract_label(
 
     sqlx::query(
         "INSERT INTO labels (label_uri, subject_uri, val, src_did, neg, created_at) \
-         VALUES (?, ?, ?, ?, 1, ?)",
+         VALUES ($1, $2, $3, $4, 1, $5)",
     )
     .bind(&label_uri)
     .bind(&input.subject_uri)
     .bind(&input.val)
     .bind(&session.did)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,

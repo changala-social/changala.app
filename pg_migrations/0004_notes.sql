@@ -1,7 +1,5 @@
--- Notes, collective notes, and edit proposals
-
 CREATE TABLE IF NOT EXISTS notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     uri TEXT,
     session_uri TEXT NOT NULL REFERENCES sessions(uri),
     author_did TEXT NOT NULL,
@@ -17,7 +15,7 @@ CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(session_uri);
 CREATE INDEX IF NOT EXISTS idx_notes_author ON notes(author_did);
 
 CREATE TABLE IF NOT EXISTS collective_notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     session_uri TEXT NOT NULL UNIQUE REFERENCES sessions(uri),
     ring_did TEXT NOT NULL,
     cid TEXT NOT NULL,
@@ -26,7 +24,7 @@ CREATE TABLE IF NOT EXISTS collective_notes (
 );
 
 CREATE TABLE IF NOT EXISTS edit_proposals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     proposal_uri TEXT,
     session_uri TEXT NOT NULL REFERENCES sessions(uri),
     proposer_did TEXT NOT NULL,

@@ -1,7 +1,5 @@
--- Brain nodes and links
-
 CREATE TABLE IF NOT EXISTS brain_nodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     uri TEXT,
     author_did TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -19,7 +17,7 @@ CREATE INDEX IF NOT EXISTS idx_brain_nodes_author ON brain_nodes(author_did);
 CREATE INDEX IF NOT EXISTS idx_brain_nodes_academic_ref ON brain_nodes(academic_ref);
 
 CREATE TABLE IF NOT EXISTS brain_links (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     link_uri TEXT,
     from_uri TEXT NOT NULL,
     to_uri TEXT NOT NULL,

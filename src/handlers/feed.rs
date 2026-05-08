@@ -1,9 +1,8 @@
 //! Feed handlers — course feeds, social feeds, brain feeds, trending, archives.
 
 use axum::extract::Query;
-use axum::{extract::State, Json};
+use axum::Json;
 
-use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
@@ -39,24 +38,16 @@ fn session_status_to_event_type(status: &str) -> &str {
 
 /// GET /xrpc/app.changala.globalview.getNotes
 pub async fn get_notes(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetNotesParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNotesOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 50);
     let sort_by = params.sort_by.as_deref().unwrap_or("votes");
 
-    // Decide ORDER BY clause and cursor filter.
-    let (_order_col, cursor_filter, order_clause) = match sort_by {
-        "created_at" | "createdAt" => (
-            "n.created_at",
-            "n.created_at < ?",
-            "ORDER BY n.created_at DESC",
-        ),
-        _ => (
-            "vote_count",
-            "vote_count < ?",
-            "ORDER BY vote_count DESC, n.created_at DESC",
-        ),
+    // Decide ORDER BY clause and cursor column.
+    let (cursor_col, order_clause) = match sort_by {
+        "created_at" | "createdAt" => ("n.created_at", "ORDER BY n.created_at DESC"),
+        _ => ("vote_count", "ORDER BY vote_count DESC, n.created_at DESC"),
     };
 
     let fetch_limit = limit + 1;
@@ -68,17 +59,19 @@ pub async fn get_notes(
          FROM notes n \
          LEFT JOIN (SELECT subject_uri, COUNT(*) as cnt FROM votes GROUP BY subject_uri) v \
            ON n.uri = v.subject_uri \
-         WHERE n.session_uri = ?"
+         WHERE n.session_uri = $1"
     );
 
     let mut binds: Vec<String> = vec![params.session_uri.clone()];
+    let mut param_idx: i32 = 2;
 
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(&format!(" AND {cursor_filter}"));
+        sql.push_str(&format!(" AND {cursor_col} < ${param_idx}"));
         binds.push(cursor.clone());
+        param_idx += 1;
     }
 
-    sql.push_str(&format!(" {order_clause} LIMIT ?"));
+    sql.push_str(&format!(" {order_clause} LIMIT ${param_idx}"));
 
     // We cannot use query_as with a dynamic column list, so use query() + Row.
     let mut query = sqlx::query(&sql);
@@ -87,8 +80,8 @@ pub async fn get_notes(
     }
     query = query.bind(fetch_limit);
 
-    let rows: Vec<sqlx::sqlite::SqliteRow> =
-        query.fetch_all(&state.db).await.map_err(|e| XrpcError {
+    let rows: Vec<sqlx::postgres::PgRow> =
+        query.fetch_all(&app.db).await.map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
             message: format!("Failed to fetch notes: {e}"),
         })?;
@@ -108,17 +101,18 @@ pub async fn get_notes(
     let labels_map = if note_uris.is_empty() {
         std::collections::HashMap::new()
     } else {
-        let placeholders = note_uris.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let placeholders: Vec<String> = (1..=note_uris.len()).map(|i| format!("${i}")).collect();
         let labels_sql = format!(
             "SELECT subject_uri, val, src_did, created_at \
-             FROM labels WHERE subject_uri IN ({placeholders}) AND neg = 0"
+             FROM labels WHERE subject_uri IN ({}) AND neg = 0",
+            placeholders.join(", ")
         );
         let mut lq = sqlx::query(&labels_sql);
         for uri in &note_uris {
             lq = lq.bind(uri);
         }
-        let label_rows: Vec<sqlx::sqlite::SqliteRow> =
-            lq.fetch_all(&state.db).await.map_err(|e| XrpcError {
+        let label_rows: Vec<sqlx::postgres::PgRow> =
+            lq.fetch_all(&app.db).await.map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
                 message: format!("Failed to fetch labels: {e}"),
             })?;
@@ -180,21 +174,21 @@ pub async fn get_notes(
 
 /// GET /xrpc/app.changala.globalview.getCourseFeed
 pub async fn get_course_feed(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetCourseFeedParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetCourseFeedOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
 
     // ----- session events -----
     let mut session_sql = String::from(
         "SELECT uri, status, created_by, created_at \
-         FROM sessions WHERE course_uri = ?",
+         FROM sessions WHERE course_uri = $1",
     );
     let mut session_binds: Vec<String> = vec![params.course_uri.clone()];
 
     if let Some(ref cursor) = params.cursor {
-        session_sql.push_str(" AND created_at < ?");
+        session_sql.push_str(" AND created_at < $2");
         session_binds.push(cursor.clone());
     }
     session_sql.push_str(" ORDER BY created_at DESC");
@@ -203,8 +197,8 @@ pub async fn get_course_feed(
     for b in &session_binds {
         sq = sq.bind(b);
     }
-    let session_rows: Vec<sqlx::sqlite::SqliteRow> =
-        sq.fetch_all(&state.db).await.map_err(|e| XrpcError {
+    let session_rows: Vec<sqlx::postgres::PgRow> =
+        sq.fetch_all(&app.db).await.map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
             message: format!("Failed to fetch session events: {e}"),
         })?;
@@ -214,12 +208,12 @@ pub async fn get_course_feed(
         "SELECT n.uri, n.author_did, n.session_uri, n.created_at \
          FROM notes n \
          JOIN sessions s ON n.session_uri = s.uri \
-         WHERE s.course_uri = ?",
+         WHERE s.course_uri = $1",
     );
     let mut note_binds: Vec<String> = vec![params.course_uri.clone()];
 
     if let Some(ref cursor) = params.cursor {
-        note_sql.push_str(" AND n.created_at < ?");
+        note_sql.push_str(" AND n.created_at < $2");
         note_binds.push(cursor.clone());
     }
     note_sql.push_str(" ORDER BY n.created_at DESC");
@@ -228,8 +222,8 @@ pub async fn get_course_feed(
     for b in &note_binds {
         nq = nq.bind(b);
     }
-    let note_rows: Vec<sqlx::sqlite::SqliteRow> =
-        nq.fetch_all(&state.db).await.map_err(|e| XrpcError {
+    let note_rows: Vec<sqlx::postgres::PgRow> =
+        nq.fetch_all(&app.db).await.map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
             message: format!("Failed to fetch note events: {e}"),
         })?;
@@ -291,9 +285,9 @@ pub async fn get_course_feed(
 
 /// GET /xrpc/app.changala.globalview.getSocialFeed
 pub async fn get_social_feed(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetSocialFeedParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetSocialFeedOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let mode = params.mode.as_deref().unwrap_or("all");
@@ -309,12 +303,14 @@ pub async fn get_social_feed(
              JOIN sessions s ON n.session_uri = s.uri",
         );
         let mut binds: Vec<String> = Vec::new();
+        let mut param_idx: i32 = 1;
 
         if let Some(ref cursor) = params.cursor {
-            sql.push_str(" WHERE n.created_at < ?");
+            sql.push_str(&format!(" WHERE n.created_at < ${param_idx}"));
             binds.push(cursor.clone());
+            param_idx += 1;
         }
-        sql.push_str(" ORDER BY n.created_at DESC LIMIT ?");
+        sql.push_str(&format!(" ORDER BY n.created_at DESC LIMIT ${param_idx}"));
 
         let mut q = sqlx::query(&sql);
         for b in &binds {
@@ -322,8 +318,8 @@ pub async fn get_social_feed(
         }
         q = q.bind(fetch_limit);
 
-        let rows: Vec<sqlx::sqlite::SqliteRow> =
-            q.fetch_all(&state.db).await.map_err(|e| XrpcError {
+        let rows: Vec<sqlx::postgres::PgRow> =
+            q.fetch_all(&app.db).await.map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
                 message: format!("Failed to fetch notes for social feed: {e}"),
             })?;
@@ -347,12 +343,14 @@ pub async fn get_social_feed(
              FROM brain_nodes",
         );
         let mut binds: Vec<String> = Vec::new();
+        let mut param_idx: i32 = 1;
 
         if let Some(ref cursor) = params.cursor {
-            sql.push_str(" WHERE created_at < ?");
+            sql.push_str(&format!(" WHERE created_at < ${param_idx}"));
             binds.push(cursor.clone());
+            param_idx += 1;
         }
-        sql.push_str(" ORDER BY created_at DESC LIMIT ?");
+        sql.push_str(&format!(" ORDER BY created_at DESC LIMIT ${param_idx}"));
 
         let mut q = sqlx::query(&sql);
         for b in &binds {
@@ -360,8 +358,8 @@ pub async fn get_social_feed(
         }
         q = q.bind(fetch_limit);
 
-        let rows: Vec<sqlx::sqlite::SqliteRow> =
-            q.fetch_all(&state.db).await.map_err(|e| XrpcError {
+        let rows: Vec<sqlx::postgres::PgRow> =
+            q.fetch_all(&app.db).await.map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
                 message: format!("Failed to fetch brain nodes for social feed: {e}"),
             })?;
@@ -406,9 +404,9 @@ pub async fn get_social_feed(
 
 /// GET /xrpc/app.changala.globalview.getBrainFeed
 pub async fn get_brain_feed(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetBrainFeedParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetBrainFeedOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
 
@@ -422,13 +420,15 @@ pub async fn get_brain_feed(
     );
 
     let mut binds: Vec<String> = Vec::new();
+    let mut param_idx: i32 = 1;
 
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(" WHERE bn.created_at < ?");
+        sql.push_str(&format!(" WHERE bn.created_at < ${param_idx}"));
         binds.push(cursor.clone());
+        param_idx += 1;
     }
 
-    sql.push_str(" ORDER BY bn.created_at DESC LIMIT ?");
+    sql.push_str(&format!(" ORDER BY bn.created_at DESC LIMIT ${param_idx}"));
 
     let mut q = sqlx::query(&sql);
     for b in &binds {
@@ -437,11 +437,10 @@ pub async fn get_brain_feed(
     q = q.bind(fetch_limit);
 
     use sqlx::Row;
-    let rows: Vec<sqlx::sqlite::SqliteRow> =
-        q.fetch_all(&state.db).await.map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to fetch brain feed: {e}"),
-        })?;
+    let rows: Vec<sqlx::postgres::PgRow> = q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Failed to fetch brain feed: {e}"),
+    })?;
 
     let has_more = rows.len() as i64 > limit;
     let rows = if has_more {
@@ -497,16 +496,16 @@ pub async fn get_brain_feed(
 /// Materialises the keyword histogram for a single session. Returns keyword
 /// texts with submission counts, total submission count, and window state.
 pub async fn get_keyword_histogram(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetKeywordHistogramParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetKeywordHistogramOutput>, XrpcError> {
+    let app = crate::state::get();
     use sqlx::Row;
 
     // Look up session to determine window state.
     let session_row =
-        sqlx::query("SELECT status, keyword_window_expires_at FROM sessions WHERE uri = ?")
+        sqlx::query("SELECT status, keyword_window_expires_at FROM sessions WHERE uri = $1")
             .bind(&params.session_uri)
-            .fetch_optional(&state.db)
+            .fetch_optional(&app.db)
             .await
             .map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
@@ -528,13 +527,13 @@ pub async fn get_keyword_histogram(
             .unwrap_or(false);
 
     // Aggregate keywords for this session.
-    let rows: Vec<sqlx::sqlite::SqliteRow> = sqlx::query(
+    let rows: Vec<sqlx::postgres::PgRow> = sqlx::query(
         "SELECT text, COUNT(*) as cnt \
-         FROM keywords WHERE session_uri = ? \
+         FROM keywords WHERE session_uri = $1 \
          GROUP BY text ORDER BY cnt DESC",
     )
     .bind(&params.session_uri)
-    .fetch_all(&state.db)
+    .fetch_all(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -568,25 +567,26 @@ pub async fn get_keyword_histogram(
 
 /// GET /xrpc/app.changala.globalview.getTrendingKeywords
 pub async fn get_trending_keywords(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetTrendingKeywordsParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetTrendingKeywordsOutput>, XrpcError> {
+    let app = crate::state::get();
     let within_hours = params.within_hours.unwrap_or(24);
     let limit = clamp_limit(params.limit, 20);
+
+    let cutoff = (chrono::Utc::now() - chrono::Duration::hours(within_hours)).to_rfc3339();
 
     let sql = "SELECT k.text, COUNT(*) as cnt, k.session_uri, s.course_uri \
                FROM keywords k \
                JOIN sessions s ON k.session_uri = s.uri \
-               WHERE k.created_at > datetime('now', '-' || ? || ' hours') \
+               WHERE k.created_at > $1 \
                GROUP BY k.text \
                ORDER BY cnt DESC \
-               LIMIT ?";
+               LIMIT $2";
 
-    let hours_str = within_hours.to_string();
-    let rows: Vec<sqlx::sqlite::SqliteRow> = sqlx::query(sql)
-        .bind(&hours_str)
+    let rows: Vec<sqlx::postgres::PgRow> = sqlx::query(sql)
+        .bind(&cutoff)
         .bind(limit)
-        .fetch_all(&state.db)
+        .fetch_all(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -618,19 +618,19 @@ pub async fn get_trending_keywords(
 
 /// GET /xrpc/app.changala.globalview.getTrendingBrainTags
 pub async fn get_trending_brain_tags(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetTrendingBrainTagsParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetTrendingBrainTagsOutput>, XrpcError> {
+    let app = crate::state::get();
     let within_days = params.within_days.unwrap_or(7);
     let limit = clamp_limit(params.limit, 20) as usize;
 
-    let days_str = within_days.to_string();
-    let sql =
-        "SELECT uri, tags FROM brain_nodes WHERE created_at > datetime('now', '-' || ? || ' days')";
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(within_days)).to_rfc3339();
 
-    let rows: Vec<sqlx::sqlite::SqliteRow> = sqlx::query(sql)
-        .bind(&days_str)
-        .fetch_all(&state.db)
+    let sql = "SELECT uri, tags FROM brain_nodes WHERE created_at > $1";
+
+    let rows: Vec<sqlx::postgres::PgRow> = sqlx::query(sql)
+        .bind(&cutoff)
+        .fetch_all(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -694,9 +694,9 @@ pub async fn get_trending_brain_tags(
 /// MVP: Since we cannot read the ATProto social graph yet, returns the
 /// most popular courses by total enrollment count as a proxy.
 pub async fn get_followed_enrollments(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetFollowedEnrollmentsParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetFollowedEnrollmentsOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 20);
 
     let sql = "SELECT e.course_uri, c.title, COUNT(*) as cnt \
@@ -704,11 +704,11 @@ pub async fn get_followed_enrollments(
                JOIN courses c ON e.course_uri = c.uri \
                GROUP BY e.course_uri \
                ORDER BY cnt DESC \
-               LIMIT ?";
+               LIMIT $1";
 
-    let rows: Vec<sqlx::sqlite::SqliteRow> = sqlx::query(sql)
+    let rows: Vec<sqlx::postgres::PgRow> = sqlx::query(sql)
         .bind(limit)
-        .fetch_all(&state.db)
+        .fetch_all(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -739,9 +739,9 @@ pub async fn get_followed_enrollments(
 
 /// GET /xrpc/app.changala.globalview.getGlobalArchiveFeed
 pub async fn get_global_archive_feed(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetGlobalArchiveFeedParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetGlobalArchiveFeedOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
 
@@ -754,15 +754,17 @@ pub async fn get_global_archive_feed(
     );
 
     let mut binds: Vec<String> = Vec::new();
+    let mut param_idx: i32 = 1;
 
     // institution_did filtering is a placeholder — in federated mode this
     // would filter by Ring DID. For single-instance MVP it's a no-op.
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(" AND a.sealed_at < ?");
+        sql.push_str(&format!(" AND a.sealed_at < ${param_idx}"));
         binds.push(cursor.clone());
+        param_idx += 1;
     }
 
-    sql.push_str(" ORDER BY a.sealed_at DESC LIMIT ?");
+    sql.push_str(&format!(" ORDER BY a.sealed_at DESC LIMIT ${param_idx}"));
 
     let mut q = sqlx::query(&sql);
     for b in &binds {
@@ -771,11 +773,10 @@ pub async fn get_global_archive_feed(
     q = q.bind(fetch_limit);
 
     use sqlx::Row;
-    let rows: Vec<sqlx::sqlite::SqliteRow> =
-        q.fetch_all(&state.db).await.map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to fetch archive feed: {e}"),
-        })?;
+    let rows: Vec<sqlx::postgres::PgRow> = q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Failed to fetch archive feed: {e}"),
+    })?;
 
     let has_more = rows.len() as i64 > limit;
     let rows = if has_more {

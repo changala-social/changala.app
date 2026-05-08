@@ -1,11 +1,9 @@
 //! Session service handlers — lifecycle management.
 
-use axum::extract::{Query, State};
-use axum::Json;
-
-use atrg_core::AppState;
 use atrg_repo::Tid;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
+use axum::extract::Query;
+use axum::Json;
 use chrono::{Duration, Utc};
 
 use atrg_auth::RequireAuth;
@@ -100,11 +98,8 @@ struct SessionViewFields {
 }
 
 /// Fetch a single session row by URI. Returns `None` when not found.
-async fn fetch_session_row(
-    db: &sqlx::SqlitePool,
-    uri: &str,
-) -> Result<Option<SessionRow>, XrpcError> {
-    let sql = format!("SELECT {SESSION_COLS} FROM sessions WHERE uri = ?");
+async fn fetch_session_row(db: &sqlx::PgPool, uri: &str) -> Result<Option<SessionRow>, XrpcError> {
+    let sql = format!("SELECT {SESSION_COLS} FROM sessions WHERE uri = $1");
     sqlx::query_as::<_, SessionRow>(&sql)
         .bind(uri)
         .fetch_optional(db)
@@ -116,7 +111,7 @@ async fn fetch_session_row(
 }
 
 /// Convenience: fetch a session row or return a `NotFound` error.
-async fn require_session_row(db: &sqlx::SqlitePool, uri: &str) -> Result<SessionRow, XrpcError> {
+async fn require_session_row(db: &sqlx::PgPool, uri: &str) -> Result<SessionRow, XrpcError> {
     fetch_session_row(db, uri).await?.ok_or_else(|| XrpcError {
         name: XrpcErrorName::NotFound,
         message: format!("session not found: {uri}"),
@@ -225,17 +220,17 @@ fn into_reschedule_output(v: SessionViewFields) -> AppChangalaRingRescheduleSess
 ///
 /// Creates a new session for a course with status `scheduled`.
 pub async fn create_session(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateSessionInput>,
 ) -> Result<Json<AppChangalaRingCreateSessionOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    auth::require_class_rep_or_admin(&state, &session.did, &input.course_uri).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_class_rep_or_admin(&app.db, &session.did, &input.course_uri).await?;
 
     // Verify the course exists
-    let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = ?")
+    let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = $1")
         .bind(&input.course_uri)
-        .fetch_optional(&state.db)
+        .fetch_optional(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -257,7 +252,7 @@ pub async fn create_session(
     sqlx::query(
         "INSERT INTO sessions (uri, rkey, course_uri, scheduled_at, duration_mins, \
                                status, created_by, topic, created_at) \
-         VALUES (?, ?, ?, ?, ?, 'scheduled', ?, ?, ?)",
+         VALUES ($1, $2, $3, $4, $5, 'scheduled', $6, $7, $8)",
     )
     .bind(&uri)
     .bind(&rkey)
@@ -267,7 +262,7 @@ pub async fn create_session(
     .bind(&created_by)
     .bind(&input.topic)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -296,10 +291,10 @@ pub async fn create_session(
 /// Fetches a single session by AT URI. The `keyword_window_open` field is
 /// computed dynamically from `keyword_window_expires_at` vs current time.
 pub async fn get_session(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetSessionParams>,
 ) -> Result<Json<AppChangalaRingGetSessionOutput>, XrpcError> {
-    let row = require_session_row(&state.db, &params.uri).await?;
+    let app = crate::state::get();
+    let row = require_session_row(&app.db, &params.uri).await?;
     Ok(Json(into_get_output(session_view(&row))))
 }
 
@@ -308,19 +303,25 @@ pub async fn get_session(
 /// Lists sessions for a course with optional status filtering and cursor-based
 /// pagination. Default limit 50, max 100.
 pub async fn list_sessions(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingListSessionsParams>,
 ) -> Result<Json<AppChangalaRingListSessionsOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = params.limit.unwrap_or(50).min(100).max(1);
 
-    let mut sql = format!("SELECT {SESSION_COLS} FROM sessions WHERE course_uri = ?");
+    let mut sql = format!("SELECT {SESSION_COLS} FROM sessions WHERE course_uri = $1");
     let mut binds: Vec<String> = vec![params.course_uri.clone()];
+    let mut param_idx = 2usize;
 
     // Status filtering — the lexicon type gives us Option<Vec<String>>
     if let Some(ref statuses) = params.statuses {
         if !statuses.is_empty() {
-            let placeholders: Vec<&str> = statuses.iter().map(|_| "?").collect();
+            let placeholders: Vec<String> = statuses
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("${}", param_idx + i))
+                .collect();
             sql.push_str(&format!(" AND status IN ({})", placeholders.join(", ")));
+            param_idx += statuses.len();
             for s in statuses {
                 binds.push(s.clone());
             }
@@ -328,11 +329,12 @@ pub async fn list_sessions(
     }
 
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(" AND created_at < ?");
+        sql.push_str(&format!(" AND created_at < ${}", param_idx));
+        param_idx += 1;
         binds.push(cursor.clone());
     }
 
-    sql.push_str(" ORDER BY created_at DESC LIMIT ?");
+    sql.push_str(&format!(" ORDER BY created_at DESC LIMIT ${}", param_idx));
 
     let fetch_limit = limit + 1;
 
@@ -342,7 +344,7 @@ pub async fn list_sessions(
     }
     query = query.bind(fetch_limit);
 
-    let rows = query.fetch_all(&state.db).await.map_err(|e| XrpcError {
+    let rows = query.fetch_all(&app.db).await.map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
         message: format!("database error: {e}"),
     })?;
@@ -376,15 +378,15 @@ pub async fn list_sessions(
 /// Transitions a session from `scheduled` → `live`. Sets `opened_at` to
 /// the current time.
 pub async fn open_session(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingOpenSessionInput>,
 ) -> Result<Json<AppChangalaRingOpenSessionOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    let course_uri = auth::get_course_for_session(&state, &input.session_uri).await?;
-    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    let course_uri = auth::get_course_for_session(&app.db, &input.session_uri).await?;
+    auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;
 
-    let row = require_session_row(&state.db, &input.session_uri).await?;
+    let row = require_session_row(&app.db, &input.session_uri).await?;
 
     // Validate current status
     if row.4 != "scheduled" {
@@ -399,10 +401,10 @@ pub async fn open_session(
 
     let now = Utc::now().to_rfc3339();
 
-    sqlx::query("UPDATE sessions SET status = 'live', opened_at = ? WHERE uri = ?")
+    sqlx::query("UPDATE sessions SET status = 'live', opened_at = $1 WHERE uri = $2")
         .bind(&now)
         .bind(&input.session_uri)
-        .execute(&state.db)
+        .execute(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -410,7 +412,7 @@ pub async fn open_session(
         })?;
 
     // Re-fetch the updated row
-    let updated = require_session_row(&state.db, &input.session_uri).await?;
+    let updated = require_session_row(&app.db, &input.session_uri).await?;
     Ok(Json(into_open_output(session_view(&updated))))
 }
 
@@ -419,15 +421,15 @@ pub async fn open_session(
 /// Transitions a session from `live` → `ended`. Sets `closed_at` and opens
 /// a 60-minute keyword submission window.
 pub async fn close_session(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCloseSessionInput>,
 ) -> Result<Json<AppChangalaRingCloseSessionOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    let course_uri = auth::get_course_for_session(&state, &input.session_uri).await?;
-    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    let course_uri = auth::get_course_for_session(&app.db, &input.session_uri).await?;
+    auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;
 
-    let row = require_session_row(&state.db, &input.session_uri).await?;
+    let row = require_session_row(&app.db, &input.session_uri).await?;
 
     if row.4 != "live" {
         return Err(XrpcError {
@@ -444,13 +446,13 @@ pub async fn close_session(
     let keyword_expires = (now + Duration::minutes(KEYWORD_WINDOW_MINS)).to_rfc3339();
 
     sqlx::query(
-        "UPDATE sessions SET status = 'ended', closed_at = ?, \
-                keyword_window_expires_at = ? WHERE uri = ?",
+        "UPDATE sessions SET status = 'ended', closed_at = $1, \
+                keyword_window_expires_at = $2 WHERE uri = $3",
     )
     .bind(&closed_at)
     .bind(&keyword_expires)
     .bind(&input.session_uri)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -458,7 +460,7 @@ pub async fn close_session(
     })?;
 
     // Re-fetch updated row and serialise the session as a JSON value
-    let updated = require_session_row(&state.db, &input.session_uri).await?;
+    let updated = require_session_row(&app.db, &input.session_uri).await?;
     let session_json = serde_json::to_value(into_get_output(session_view(&updated))).unwrap();
 
     Ok(Json(AppChangalaRingCloseSessionOutput {
@@ -471,15 +473,15 @@ pub async fn close_session(
 ///
 /// Cancels a session. Valid from `scheduled` or `live` status.
 pub async fn cancel_session(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCancelSessionInput>,
 ) -> Result<Json<AppChangalaRingCancelSessionOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    let course_uri = auth::get_course_for_session(&state, &input.session_uri).await?;
-    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    let course_uri = auth::get_course_for_session(&app.db, &input.session_uri).await?;
+    auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;
 
-    let row = require_session_row(&state.db, &input.session_uri).await?;
+    let row = require_session_row(&app.db, &input.session_uri).await?;
 
     if row.4 != "scheduled" && row.4 != "live" {
         return Err(XrpcError {
@@ -491,16 +493,16 @@ pub async fn cancel_session(
         });
     }
 
-    sqlx::query("UPDATE sessions SET status = 'cancelled' WHERE uri = ?")
+    sqlx::query("UPDATE sessions SET status = 'cancelled' WHERE uri = $1")
         .bind(&input.session_uri)
-        .execute(&state.db)
+        .execute(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
             message: format!("database error: {e}"),
         })?;
 
-    let updated = require_session_row(&state.db, &input.session_uri).await?;
+    let updated = require_session_row(&app.db, &input.session_uri).await?;
     Ok(Json(into_cancel_output(session_view(&updated))))
 }
 
@@ -508,15 +510,15 @@ pub async fn cancel_session(
 ///
 /// Reschedules a session. Valid only from `scheduled` status.
 pub async fn reschedule_session(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRescheduleSessionInput>,
 ) -> Result<Json<AppChangalaRingRescheduleSessionOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    let course_uri = auth::get_course_for_session(&state, &input.session_uri).await?;
-    auth::require_class_rep_or_admin(&state, &session.did, &course_uri).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    let course_uri = auth::get_course_for_session(&app.db, &input.session_uri).await?;
+    auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;
 
-    let row = require_session_row(&state.db, &input.session_uri).await?;
+    let row = require_session_row(&app.db, &input.session_uri).await?;
 
     if row.4 != "scheduled" {
         return Err(XrpcError {
@@ -528,16 +530,16 @@ pub async fn reschedule_session(
         });
     }
 
-    sqlx::query("UPDATE sessions SET status = 'rescheduled', rescheduled_to = ? WHERE uri = ?")
+    sqlx::query("UPDATE sessions SET status = 'rescheduled', rescheduled_to = $1 WHERE uri = $2")
         .bind(&input.rescheduled_to)
         .bind(&input.session_uri)
-        .execute(&state.db)
+        .execute(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
             message: format!("database error: {e}"),
         })?;
 
-    let updated = require_session_row(&state.db, &input.session_uri).await?;
+    let updated = require_session_row(&app.db, &input.session_uri).await?;
     Ok(Json(into_reschedule_output(session_view(&updated))))
 }

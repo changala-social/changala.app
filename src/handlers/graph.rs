@@ -7,10 +7,9 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use axum::extract::{Query, State};
+use axum::extract::Query;
 use axum::Json;
 
-use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
@@ -48,15 +47,13 @@ fn parse_tags(raw: &str) -> Vec<String> {
     serde_json::from_str::<Vec<String>>(raw).unwrap_or_default()
 }
 
-/// Build a SQL `IN (...)` clause from a set of URIs.
+/// Build a PostgreSQL `IN ($1, $2, ...)` placeholder clause for `count` parameters.
 ///
-/// SQLite + sqlx doesn't support binding a dynamic list to `IN (?)`, so we
-/// build the clause by quoting each URI. This is safe because AT URIs are
-/// well-structured (`at://did:plc:xxx/collection/rkey`) and cannot contain
-/// SQL injection characters — but we still escape single quotes defensively.
-fn build_in_clause(uris: &HashSet<String>) -> String {
-    uris.iter()
-        .map(|u| format!("'{}'", u.replace('\'', "''")))
+/// Each call generates placeholders starting from `$1`. The caller is responsible
+/// for binding the corresponding values in order.
+fn build_in_clause(count: usize) -> String {
+    (1..=count)
+        .map(|i| format!("${i}"))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -64,24 +61,26 @@ fn build_in_clause(uris: &HashSet<String>) -> String {
 /// Fetch brain_node metadata for a set of URIs and return a map of uri → node JSON.
 async fn fetch_node_metadata(
     uris: &HashSet<String>,
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
 ) -> Result<HashMap<String, serde_json::Value>, XrpcError> {
     if uris.is_empty() {
         return Ok(HashMap::new());
     }
 
-    let in_clause = build_in_clause(uris);
+    let uris_vec: Vec<&str> = uris.iter().map(|s| s.as_str()).collect();
+    let in_clause = build_in_clause(uris_vec.len());
     let query = format!(
         "SELECT uri, title, author_did, tags, summary FROM brain_nodes WHERE uri IN ({in_clause})"
     );
 
-    let rows = sqlx::query_as::<_, (String, String, String, String, Option<String>)>(&query)
-        .fetch_all(db)
-        .await
-        .map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("Failed to fetch node metadata: {e}"),
-        })?;
+    let mut q = sqlx::query_as::<_, (String, String, String, String, Option<String>)>(&query);
+    for uri in &uris_vec {
+        q = q.bind(uri);
+    }
+    let rows = q.fetch_all(db).await.map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Failed to fetch node metadata: {e}"),
+    })?;
 
     let mut map = HashMap::new();
     for (uri, title, author_did, tags_raw, summary) in rows {
@@ -110,9 +109,9 @@ async fn fetch_node_metadata(
 /// `depth` hops (default 2, max 3). Both outbound and inbound edges are
 /// followed at each level. Total nodes are capped at 100.
 pub async fn get_node_graph(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetNodeGraphParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNodeGraphOutput>, XrpcError> {
+    let app = crate::state::get();
     let depth = params.depth.unwrap_or(DEFAULT_DEPTH).min(MAX_DEPTH).max(1) as usize;
 
     // BFS state
@@ -129,31 +128,34 @@ pub async fn get_node_graph(
             break;
         }
 
-        let in_clause = build_in_clause(&frontier);
+        let frontier_vec: Vec<&str> = frontier.iter().map(|s| s.as_str()).collect();
+        let in_clause = build_in_clause(frontier_vec.len());
 
         // Outbound edges: current frontier → neighbours
         let outbound_query = format!(
             "SELECT from_uri, to_uri, label FROM brain_links WHERE from_uri IN ({in_clause})"
         );
-        let outbound_rows = sqlx::query_as::<_, (String, String, Option<String>)>(&outbound_query)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("Failed to query outbound links: {e}"),
-            })?;
+        let mut outbound_q = sqlx::query_as::<_, (String, String, Option<String>)>(&outbound_query);
+        for uri in &frontier_vec {
+            outbound_q = outbound_q.bind(uri);
+        }
+        let outbound_rows = outbound_q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to query outbound links: {e}"),
+        })?;
 
         // Inbound edges: neighbours → current frontier
         let inbound_query = format!(
             "SELECT from_uri, to_uri, label FROM brain_links WHERE to_uri IN ({in_clause})"
         );
-        let inbound_rows = sqlx::query_as::<_, (String, String, Option<String>)>(&inbound_query)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("Failed to query inbound links: {e}"),
-            })?;
+        let mut inbound_q = sqlx::query_as::<_, (String, String, Option<String>)>(&inbound_query);
+        for uri in &frontier_vec {
+            inbound_q = inbound_q.bind(uri);
+        }
+        let inbound_rows = inbound_q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to query inbound links: {e}"),
+        })?;
 
         let mut next_frontier: HashSet<String> = HashSet::new();
 
@@ -180,7 +182,7 @@ pub async fn get_node_graph(
     }
 
     // Fetch metadata for all discovered nodes
-    let node_metadata = fetch_node_metadata(&visited, &state.db).await?;
+    let node_metadata = fetch_node_metadata(&visited, &app.db).await?;
 
     // Build output nodes — include a minimal entry even if the node isn't in
     // brain_nodes (it may be an external URI referenced by a link).
@@ -229,9 +231,9 @@ pub async fn get_node_graph(
 /// pagination on `created_at`. Each backlink includes the source node's
 /// title and author DID for display without a second round-trip.
 pub async fn get_backlinks(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetBacklinksParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetBacklinksOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = params
         .limit
         .unwrap_or(DEFAULT_BACKLINKS_LIMIT)
@@ -244,9 +246,9 @@ pub async fn get_backlinks(
             "SELECT bl.from_uri, bn.title, bn.author_did, bl.label, bl.created_at \
              FROM brain_links bl \
              JOIN brain_nodes bn ON bl.from_uri = bn.uri \
-             WHERE bl.to_uri = ? AND bl.created_at < ? \
+             WHERE bl.to_uri = $1 AND bl.created_at < $2 \
              ORDER BY bl.created_at DESC \
-             LIMIT ?"
+             LIMIT $3"
                 .to_string(),
             true,
         )
@@ -255,9 +257,9 @@ pub async fn get_backlinks(
             "SELECT bl.from_uri, bn.title, bn.author_did, bl.label, bl.created_at \
              FROM brain_links bl \
              JOIN brain_nodes bn ON bl.from_uri = bn.uri \
-             WHERE bl.to_uri = ? \
+             WHERE bl.to_uri = $1 \
              ORDER BY bl.created_at DESC \
-             LIMIT ?"
+             LIMIT $2"
                 .to_string(),
             false,
         )
@@ -269,13 +271,13 @@ pub async fn get_backlinks(
             .bind(&params.node_uri)
             .bind(cursor_val)
             .bind(limit)
-            .fetch_all(&state.db)
+            .fetch_all(&app.db)
             .await
     } else {
         sqlx::query_as::<_, (String, String, String, Option<String>, String)>(&query)
             .bind(&params.node_uri)
             .bind(limit)
-            .fetch_all(&state.db)
+            .fetch_all(&app.db)
             .await
     }
     .map_err(|e| XrpcError {
@@ -322,9 +324,9 @@ pub async fn get_backlinks(
 /// node (default 1, max 3). Each neighbour includes its hop distance from
 /// the center. The center node itself is excluded from results.
 pub async fn get_neighbours(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetNeighboursParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNeighboursOutput>, XrpcError> {
+    let app = crate::state::get();
     let hops = params.hops.unwrap_or(DEFAULT_HOPS).min(MAX_DEPTH).max(1) as usize;
     let limit = params
         .limit
@@ -344,29 +346,27 @@ pub async fn get_neighbours(
             continue;
         }
 
-        // Build single-element IN clause for the current node
-        let escaped = current_uri.replace('\'', "''");
-        let quoted = format!("'{escaped}'");
-
         // Outbound neighbours
-        let outbound_query = format!("SELECT to_uri FROM brain_links WHERE from_uri = {quoted}");
-        let outbound_rows = sqlx::query_as::<_, (String,)>(&outbound_query)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("Failed to query outbound neighbours: {e}"),
-            })?;
+        let outbound_rows =
+            sqlx::query_as::<_, (String,)>("SELECT to_uri FROM brain_links WHERE from_uri = $1")
+                .bind(&current_uri)
+                .fetch_all(&app.db)
+                .await
+                .map_err(|e| XrpcError {
+                    name: XrpcErrorName::InternalServerError,
+                    message: format!("Failed to query outbound neighbours: {e}"),
+                })?;
 
         // Inbound neighbours
-        let inbound_query = format!("SELECT from_uri FROM brain_links WHERE to_uri = {quoted}");
-        let inbound_rows = sqlx::query_as::<_, (String,)>(&inbound_query)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("Failed to query inbound neighbours: {e}"),
-            })?;
+        let inbound_rows =
+            sqlx::query_as::<_, (String,)>("SELECT from_uri FROM brain_links WHERE to_uri = $1")
+                .bind(&current_uri)
+                .fetch_all(&app.db)
+                .await
+                .map_err(|e| XrpcError {
+                    name: XrpcErrorName::InternalServerError,
+                    message: format!("Failed to query inbound neighbours: {e}"),
+                })?;
 
         let next_dist = current_dist + 1;
         for (neighbour_uri,) in outbound_rows.into_iter().chain(inbound_rows.into_iter()) {
@@ -392,7 +392,7 @@ pub async fn get_neighbours(
 
     // Fetch metadata for all discovered neighbour URIs
     let neighbour_uris: HashSet<String> = visited.keys().cloned().collect();
-    let node_metadata = fetch_node_metadata(&neighbour_uris, &state.db).await?;
+    let node_metadata = fetch_node_metadata(&neighbour_uris, &app.db).await?;
 
     // Build output, capped to limit
     let mut neighbours: Vec<serde_json::Value> = visited

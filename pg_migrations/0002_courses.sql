@@ -1,7 +1,5 @@
--- Courses and enrollments
-
 CREATE TABLE IF NOT EXISTS courses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     uri TEXT NOT NULL UNIQUE,
     rkey TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
@@ -19,7 +17,7 @@ CREATE INDEX IF NOT EXISTS idx_courses_semester ON courses(semester);
 CREATE INDEX IF NOT EXISTS idx_courses_department ON courses(department);
 
 CREATE TABLE IF NOT EXISTS enrollments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     course_uri TEXT NOT NULL REFERENCES courses(uri),
     did TEXT NOT NULL,
     enrolled_at TEXT NOT NULL,

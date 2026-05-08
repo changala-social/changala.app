@@ -2,9 +2,8 @@
 
 use atrg_auth::RequireAuth;
 use axum::extract::Query;
-use axum::{extract::State, Json};
+use axum::Json;
 
-use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 
 use crate::generated::types::*;
@@ -13,11 +12,11 @@ use super::auth;
 
 /// POST /xrpc/app.changala.ring.banDid
 pub async fn ban_did(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingBanDidInput>,
 ) -> Result<Json<AppChangalaRingBanDidOutput>, XrpcError> {
-    auth::require_role(&state, &session.did, "admin").await?;
+    let app = crate::state::get();
+    auth::require_role(&app.db, &session.did, "admin").await?;
 
     let banned_at = chrono::Utc::now().to_rfc3339();
     let permanent = input.ttl_seconds.is_none();
@@ -26,7 +25,7 @@ pub async fn ban_did(
         .map(|ttl| (chrono::Utc::now() + chrono::Duration::seconds(ttl)).to_rfc3339());
 
     sqlx::query(
-        "INSERT INTO bans (target_did, permanent, expires_at, reason, banned_at) VALUES (?, ?, ?, ?, ?) \
+        "INSERT INTO bans (target_did, permanent, expires_at, reason, banned_at) VALUES ($1, $2, $3, $4, $5) \
          ON CONFLICT(target_did) DO UPDATE SET permanent = excluded.permanent, expires_at = excluded.expires_at, reason = excluded.reason, banned_at = excluded.banned_at"
     )
     .bind(&input.target_did)
@@ -34,7 +33,7 @@ pub async fn ban_did(
     .bind(&expires_at)
     .bind(&input.reason)
     .bind(&banned_at)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -51,14 +50,14 @@ pub async fn ban_did(
 
 /// POST /xrpc/app.changala.ring.liftBan
 pub async fn lift_ban(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingLiftBanInput>,
 ) -> Result<Json<AppChangalaRingLiftBanOutput>, XrpcError> {
-    auth::require_role(&state, &session.did, "admin").await?;
-    let result = sqlx::query("DELETE FROM bans WHERE target_did = ?")
+    let app = crate::state::get();
+    auth::require_role(&app.db, &session.did, "admin").await?;
+    let result = sqlx::query("DELETE FROM bans WHERE target_did = $1")
         .bind(&input.target_did)
-        .execute(&state.db)
+        .execute(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -80,30 +79,33 @@ pub async fn lift_ban(
 
 /// GET /xrpc/app.changala.ring.listBans
 pub async fn list_bans(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Query(params): Query<AppChangalaRingListBansParams>,
 ) -> Result<Json<AppChangalaRingListBansOutput>, XrpcError> {
-    auth::require_role(&state, &session.did, "admin").await?;
+    let app = crate::state::get();
+    auth::require_role(&app.db, &session.did, "admin").await?;
     let limit = params.limit.unwrap_or(50).min(100);
 
     let mut query_str =
         String::from("SELECT target_did, permanent, expires_at, reason, banned_at FROM bans");
-    let mut conditions = Vec::new();
+    let mut conditions: Vec<String> = Vec::new();
+    let mut param_idx = 0u32;
 
     if params.permanent_only == Some(true) {
-        conditions.push("permanent = 1");
+        conditions.push("permanent = TRUE".to_string());
     }
 
-    if let Some(ref _cursor) = params.cursor {
-        conditions.push("banned_at < ?");
+    if params.cursor.is_some() {
+        param_idx += 1;
+        conditions.push(format!("banned_at < ${param_idx}"));
     }
 
     if !conditions.is_empty() {
         query_str.push_str(" WHERE ");
         query_str.push_str(&conditions.join(" AND "));
     }
-    query_str.push_str(" ORDER BY banned_at DESC LIMIT ?");
+    param_idx += 1;
+    query_str.push_str(&format!(" ORDER BY banned_at DESC LIMIT ${param_idx}"));
 
     // Build query with dynamic bindings
     let mut q =
@@ -114,7 +116,7 @@ pub async fn list_bans(
     }
     q = q.bind(limit);
 
-    let rows = q.fetch_all(&state.db).await.map_err(|e| XrpcError {
+    let rows = q.fetch_all(&app.db).await.map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
         message: format!("Failed to list bans: {e}"),
     })?;
@@ -142,14 +144,14 @@ pub async fn list_bans(
 
 /// GET /xrpc/app.changala.ring.isBanned
 pub async fn is_banned(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingIsBannedParams>,
 ) -> Result<Json<AppChangalaRingIsBannedOutput>, XrpcError> {
+    let app = crate::state::get();
     let row = sqlx::query_as::<_, (bool, Option<String>)>(
-        "SELECT 1, expires_at FROM bans WHERE target_did = ? AND (permanent = 1 OR expires_at > datetime('now'))"
+        "SELECT 1, expires_at FROM bans WHERE target_did = $1 AND (permanent = TRUE OR expires_at > NOW()::TEXT)"
     )
     .bind(&params.did)
-    .fetch_optional(&state.db)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,

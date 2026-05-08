@@ -39,7 +39,9 @@ Changala has **two layers** and **three runtime components**.
 | Jetstream event handler | Wired (5 collection handlers) |
 | Handler code | 5,199 lines across 12 modules |
 | SQL migration files | 9 (covering 16 tables) |
-| Build status | ✅ Clean — zero errors, zero warnings |
+| Build status | ✅ Clean — zero errors, zero warnings (Postgres + S3) |
+| Database | PostgreSQL (via CNPG) |
+| Blob storage | S3-compatible (RustFS) |
 
 ---
 
@@ -220,27 +222,27 @@ Changala has **two layers** and **three runtime components**.
 
 ---
 
-## Phase 7: Real Blob Storage 🔜 NEXT
+## Phase 7: Real Blob Storage ✅ COMPLETE
 
-- [ ] Replace fake CID generation with real content-addressed storage
-- [ ] Ring blob store implementation (file-backed or S3-compatible)
-- [ ] Content deduplication via CID
-- [ ] Blob size limits and quota management per user
-
----
-
-## Phase 8: Production Hardening
-
-- [ ] Rate limiting (atrg built-in middleware)
-- [ ] Request validation against lexicon schemas
-- [ ] Structured logging + metrics (tracing + prometheus)
-- [ ] Health check endpoint with DB connectivity verification
-- [ ] Graceful shutdown (drain in-flight requests)
-- [ ] Configuration via environment variables for all secrets
+- [x] Replace fake CID generation with real content-addressed storage
+- [x] Ring blob store implementation (file-backed or S3-compatible)
+- [x] Content deduplication via CID
+- [x] Blob size limits and quota management per user
 
 ---
 
-## Phase 9: Federation (Post-MVP)
+## Phase 8: Production Hardening ✅ COMPLETE
+
+- [x] Rate limiting (atrg built-in middleware)
+- [x] Request validation against lexicon schemas
+- [x] Structured logging + metrics (tracing + prometheus)
+- [x] Health check endpoint with DB connectivity verification
+- [x] Graceful shutdown (drain in-flight requests)
+- [x] Configuration via environment variables for all secrets
+
+---
+
+## Phase 9: Federation (Post-MVP) 🔜 NEXT
 
 - [ ] Multiple Ring instances (one per institution)
 - [ ] Cross-Ring content discovery via Global View aggregation

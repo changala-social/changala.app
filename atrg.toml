@@ -34,3 +34,18 @@ collections = [
 # requests_per_second = 10.0
 # burst = 50
 # enabled = true
+
+# ─── Changala-specific configuration ──────────────────────
+# These settings are loaded by Changala's own init code,
+# NOT by the atrg framework.
+
+[changala]
+database_url = "postgres://changala:changala@localhost:5432/changala"
+
+[changala.s3]
+endpoint = "http://localhost:9000"
+bucket = "changala-blobs"
+region = "us-east-1"
+access_key = "minioadmin"
+secret_key = "minioadmin"
+path_style = true

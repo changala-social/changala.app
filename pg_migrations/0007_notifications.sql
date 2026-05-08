@@ -1,11 +1,9 @@
--- Notifications
-
 CREATE TABLE IF NOT EXISTS notifications (
     id TEXT PRIMARY KEY,
     recipient_did TEXT NOT NULL,
     reason TEXT NOT NULL,
     subject_uri TEXT NOT NULL,
-    read INTEGER NOT NULL DEFAULT 0,
+    read BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_did);

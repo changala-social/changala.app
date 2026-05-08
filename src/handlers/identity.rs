@@ -1,10 +1,9 @@
 //! Identity service handlers — email verification and membership management.
 
 use crate::generated::types::*;
-use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use axum::extract::Query;
-use axum::{extract::State, Json};
+use axum::Json;
 use serde_json::json;
 
 /// POST /xrpc/app.changala.ring.verifyEmail
@@ -13,9 +12,9 @@ use serde_json::json;
 /// - Call 1: {did, email} → generates OTP, stores in DB, returns {status: "otpSent"}
 /// - Call 2: {did, email, otp} → verifies, creates membership, returns {status: "verified", membershipUri}
 pub async fn verify_email(
-    State(state): State<AppState>,
     Json(input): Json<AppChangalaRingVerifyEmailInput>,
 ) -> Result<Json<AppChangalaRingVerifyEmailOutput>, XrpcError> {
+    let app = crate::state::get();
     // Validate email domain — must be an institution email
     // For MVP, accept any email. Post-MVP: check against configured domains.
 
@@ -25,17 +24,19 @@ pub async fn verify_email(
             let code = generate_otp();
             let expires_at = chrono::Utc::now().timestamp() + 600; // 10 minutes
 
-            sqlx::query("INSERT INTO otp_codes (did, email, code, expires_at) VALUES (?, ?, ?, ?)")
-                .bind(&input.did)
-                .bind(&input.email)
-                .bind(&code)
-                .bind(expires_at)
-                .execute(&state.db)
-                .await
-                .map_err(|e| XrpcError {
-                    name: XrpcErrorName::InternalServerError,
-                    message: format!("Failed to store OTP: {e}"),
-                })?;
+            sqlx::query(
+                "INSERT INTO otp_codes (did, email, code, expires_at) VALUES ($1, $2, $3, $4)",
+            )
+            .bind(&input.did)
+            .bind(&input.email)
+            .bind(&code)
+            .bind(expires_at)
+            .execute(&app.db)
+            .await
+            .map_err(|e| XrpcError {
+                name: XrpcErrorName::InternalServerError,
+                message: format!("Failed to store OTP: {e}"),
+            })?;
 
             // In production, send email here. For MVP, log it.
             tracing::info!(did = %input.did, email = %input.email, otp = %code, "OTP generated (dev mode — logged, not emailed)");
@@ -50,13 +51,13 @@ pub async fn verify_email(
             let now = chrono::Utc::now().timestamp();
 
             let valid = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM otp_codes WHERE did = ? AND email = ? AND code = ? AND expires_at > ? AND used = 0"
+                "SELECT COUNT(*) FROM otp_codes WHERE did = $1 AND email = $2 AND code = $3 AND expires_at > $4 AND used = FALSE"
             )
             .bind(&input.did)
             .bind(&input.email)
             .bind(&otp)
             .bind(now)
-            .fetch_one(&state.db)
+            .fetch_one(&app.db)
             .await
             .map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
@@ -71,13 +72,15 @@ pub async fn verify_email(
             }
 
             // Mark OTP as used
-            sqlx::query("UPDATE otp_codes SET used = 1 WHERE did = ? AND email = ? AND code = ?")
-                .bind(&input.did)
-                .bind(&input.email)
-                .bind(&otp)
-                .execute(&state.db)
-                .await
-                .ok();
+            sqlx::query(
+                "UPDATE otp_codes SET used = TRUE WHERE did = $1 AND email = $2 AND code = $3",
+            )
+            .bind(&input.did)
+            .bind(&input.email)
+            .bind(&otp)
+            .execute(&app.db)
+            .await
+            .ok();
 
             // Extract institution domain from email
             let domain = input
@@ -93,7 +96,7 @@ pub async fn verify_email(
 
             sqlx::query(
                 "INSERT INTO memberships (did, institution_did, institution_domain, role, verified_email, verified_at) \
-                 VALUES (?, ?, ?, 'student', ?, ?) \
+                 VALUES ($1, $2, $3, 'student', $4, $5) \
                  ON CONFLICT(did, institution_did) DO UPDATE SET verified_at = excluded.verified_at, verified_email = excluded.verified_email"
             )
             .bind(&input.did)
@@ -101,7 +104,7 @@ pub async fn verify_email(
             .bind(&domain)
             .bind(&input.email)
             .bind(&verified_at)
-            .execute(&state.db)
+            .execute(&app.db)
             .await
             .map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
@@ -122,14 +125,14 @@ pub async fn verify_email(
 
 /// GET /xrpc/app.changala.ring.getMemberships
 pub async fn get_memberships(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetMembershipsParams>,
 ) -> Result<Json<AppChangalaRingGetMembershipsOutput>, XrpcError> {
+    let app = crate::state::get();
     let rows = sqlx::query_as::<_, (String, String, String, String, Option<String>)>(
-        "SELECT institution_did, institution_domain, role, verified_at, membership_uri FROM memberships WHERE did = ?"
+        "SELECT institution_did, institution_domain, role, verified_at, membership_uri FROM memberships WHERE did = $1"
     )
     .bind(&params.did)
-    .fetch_all(&state.db)
+    .fetch_all(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -154,13 +157,13 @@ pub async fn get_memberships(
 
 /// GET /xrpc/app.changala.ring.getRole
 pub async fn get_role(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetRoleParams>,
 ) -> Result<Json<AppChangalaRingGetRoleOutput>, XrpcError> {
+    let app = crate::state::get();
     let role =
-        sqlx::query_scalar::<_, String>("SELECT role FROM memberships WHERE did = ? LIMIT 1")
+        sqlx::query_scalar::<_, String>("SELECT role FROM memberships WHERE did = $1 LIMIT 1")
             .bind(&params.did)
-            .fetch_optional(&state.db)
+            .fetch_optional(&app.db)
             .await
             .map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,

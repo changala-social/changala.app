@@ -1,11 +1,9 @@
 //! Course service handlers — CRUD and enrollment.
 
-use axum::extract::{Query, State};
-use axum::Json;
-
-use atrg_core::AppState;
 use atrg_repo::Tid;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
+use axum::extract::Query;
+use axum::Json;
 use chrono::Utc;
 
 use atrg_auth::RequireAuth;
@@ -54,7 +52,7 @@ fn course_view(
 /// Fetch a course from the DB and its enrollment count, returning a full
 /// course view output. Returns `None` when no row matches.
 async fn fetch_course_view(
-    db: &sqlx::SqlitePool,
+    db: &sqlx::PgPool,
     uri: &str,
 ) -> Result<Option<AppChangalaRingCreateCourseOutput>, XrpcError> {
     let row = sqlx::query_as::<
@@ -74,7 +72,7 @@ async fn fetch_course_view(
     >(
         "SELECT uri, title, code, department, semester, visibility, \
                 created_by, class_rep_did, description, created_at \
-         FROM courses WHERE uri = ?",
+         FROM courses WHERE uri = $1",
     )
     .bind(uri)
     .fetch_optional(db)
@@ -90,7 +88,7 @@ async fn fetch_course_view(
     };
 
     let enrolled_count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM enrollments WHERE course_uri = ?")
+        sqlx::query_as("SELECT COUNT(*) FROM enrollments WHERE course_uri = $1")
             .bind(uri)
             .fetch_one(db)
             .await
@@ -123,12 +121,12 @@ async fn fetch_course_view(
 /// Generates a TID rkey, inserts a new course, and returns the full course
 /// view with `enrolled_count: 0`.
 pub async fn create_course(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateCourseInput>,
 ) -> Result<Json<AppChangalaRingCreateCourseOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    auth::require_role(&state, &session.did, "admin").await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_role(&app.db, &session.did, "admin").await?;
 
     let rkey = Tid::now().to_string();
     let uri = format!("at://changala.ring/app.changala.course/{rkey}");
@@ -138,7 +136,7 @@ pub async fn create_course(
     sqlx::query(
         "INSERT INTO courses (uri, rkey, title, code, department, semester, \
                               visibility, created_by, class_rep_did, description, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9, $10)",
     )
     .bind(&uri)
     .bind(&rkey)
@@ -150,10 +148,10 @@ pub async fn create_course(
     .bind(&created_by)
     .bind(&input.description)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| {
-        // SQLite UNIQUE constraint violation → duplicate course code+semester
+        // UNIQUE constraint violation → duplicate course code+semester
         if let sqlx::Error::Database(ref db_err) = e {
             if db_err.message().contains("UNIQUE") {
                 return XrpcError {
@@ -191,10 +189,10 @@ pub async fn create_course(
 ///
 /// Fetches a single course by AT URI. Returns `NotFound` if absent.
 pub async fn get_course(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetCourseParams>,
 ) -> Result<Json<AppChangalaRingGetCourseOutput>, XrpcError> {
-    let view = fetch_course_view(&state.db, &params.uri)
+    let app = crate::state::get();
+    let view = fetch_course_view(&app.db, &params.uri)
         .await?
         .ok_or_else(|| XrpcError {
             name: XrpcErrorName::NotFound,
@@ -223,9 +221,9 @@ pub async fn get_course(
 /// pagination. Default limit 50, max 100. Cursor is the `created_at` of the
 /// last item in the previous page.
 pub async fn list_courses(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingListCoursesParams>,
 ) -> Result<Json<AppChangalaRingListCoursesOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = params.limit.unwrap_or(50).min(100).max(1);
 
     // Build dynamic query
@@ -235,21 +233,26 @@ pub async fn list_courses(
          FROM courses WHERE 1=1",
     );
     let mut binds: Vec<String> = Vec::new();
+    let mut param_idx = 0u32;
 
     if let Some(ref sem) = params.semester {
-        sql.push_str(" AND semester = ?");
+        param_idx += 1;
+        sql.push_str(&format!(" AND semester = ${param_idx}"));
         binds.push(sem.clone());
     }
     if let Some(ref dept) = params.department {
-        sql.push_str(" AND department = ?");
+        param_idx += 1;
+        sql.push_str(&format!(" AND department = ${param_idx}"));
         binds.push(dept.clone());
     }
     if let Some(ref cursor) = params.cursor {
-        sql.push_str(" AND created_at < ?");
+        param_idx += 1;
+        sql.push_str(&format!(" AND created_at < ${param_idx}"));
         binds.push(cursor.clone());
     }
 
-    sql.push_str(" ORDER BY created_at DESC LIMIT ?");
+    param_idx += 1;
+    sql.push_str(&format!(" ORDER BY created_at DESC LIMIT ${param_idx}"));
 
     // We need to fetch limit+1 to know if there's a next page
     let fetch_limit = limit + 1;
@@ -277,7 +280,7 @@ pub async fn list_courses(
     }
     query = query.bind(fetch_limit);
 
-    let rows = query.fetch_all(&state.db).await.map_err(|e| XrpcError {
+    let rows = query.fetch_all(&app.db).await.map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
         message: format!("database error: {e}"),
     })?;
@@ -293,9 +296,9 @@ pub async fn list_courses(
     for row in rows {
         // Count enrollments per course
         let enrolled: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM enrollments WHERE course_uri = ?")
+            sqlx::query_as("SELECT COUNT(*) FROM enrollments WHERE course_uri = $1")
                 .bind(&row.0)
-                .fetch_one(&state.db)
+                .fetch_one(&app.db)
                 .await
                 .map_err(|e| XrpcError {
                     name: XrpcErrorName::InternalServerError,
@@ -333,19 +336,19 @@ pub async fn list_courses(
 /// falls back to the authenticated user's DID (placeholder for now).
 /// Returns 400 (InvalidRequest) on duplicate enrollment.
 pub async fn enroll_student(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingEnrollStudentInput>,
 ) -> Result<Json<AppChangalaRingEnrollStudentOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let did = input.target_did.unwrap_or_else(|| session.did.clone());
     let now = Utc::now().to_rfc3339();
 
     // Verify the course exists
-    let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = ?")
+    let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = $1")
         .bind(&input.course_uri)
-        .fetch_optional(&state.db)
+        .fetch_optional(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -359,11 +362,11 @@ pub async fn enroll_student(
         });
     }
 
-    sqlx::query("INSERT INTO enrollments (course_uri, did, enrolled_at) VALUES (?, ?, ?)")
+    sqlx::query("INSERT INTO enrollments (course_uri, did, enrolled_at) VALUES ($1, $2, $3)")
         .bind(&input.course_uri)
         .bind(&did)
         .bind(&now)
-        .execute(&state.db)
+        .execute(&app.db)
         .await
         .map_err(|e| {
             if let sqlx::Error::Database(ref db_err) = e {
@@ -392,15 +395,15 @@ pub async fn enroll_student(
 /// Lists enrolled student DIDs for a course, with cursor-based pagination
 /// and a total count.
 pub async fn get_enrollments(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetEnrollmentsParams>,
 ) -> Result<Json<AppChangalaRingGetEnrollmentsOutput>, XrpcError> {
+    let app = crate::state::get();
     let limit = params.limit.unwrap_or(50).min(100).max(1);
 
     // Total enrolled count (regardless of pagination)
-    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM enrollments WHERE course_uri = ?")
+    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM enrollments WHERE course_uri = $1")
         .bind(&params.course_uri)
-        .fetch_one(&state.db)
+        .fetch_one(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -412,23 +415,23 @@ pub async fn get_enrollments(
     let rows = if let Some(ref cursor) = params.cursor {
         sqlx::query_as::<_, (String, String)>(
             "SELECT did, enrolled_at FROM enrollments \
-             WHERE course_uri = ? AND enrolled_at < ? \
-             ORDER BY enrolled_at DESC LIMIT ?",
+             WHERE course_uri = $1 AND enrolled_at < $2 \
+             ORDER BY enrolled_at DESC LIMIT $3",
         )
         .bind(&params.course_uri)
         .bind(cursor)
         .bind(fetch_limit)
-        .fetch_all(&state.db)
+        .fetch_all(&app.db)
         .await
     } else {
         sqlx::query_as::<_, (String, String)>(
             "SELECT did, enrolled_at FROM enrollments \
-             WHERE course_uri = ? \
-             ORDER BY enrolled_at DESC LIMIT ?",
+             WHERE course_uri = $1 \
+             ORDER BY enrolled_at DESC LIMIT $2",
         )
         .bind(&params.course_uri)
         .bind(fetch_limit)
-        .fetch_all(&state.db)
+        .fetch_all(&app.db)
         .await
     }
     .map_err(|e| XrpcError {
@@ -464,17 +467,17 @@ pub async fn get_enrollments(
 /// DID's role in the memberships table to `classRep`. Returns the updated
 /// course view.
 pub async fn assign_class_rep(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingAssignClassRepInput>,
 ) -> Result<Json<AppChangalaRingAssignClassRepOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    auth::require_role(&state, &session.did, "admin").await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_role(&app.db, &session.did, "admin").await?;
 
     // Verify the course exists
-    let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = ?")
+    let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = $1")
         .bind(&input.course_uri)
-        .fetch_optional(&state.db)
+        .fetch_optional(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -489,10 +492,10 @@ pub async fn assign_class_rep(
     }
 
     // Update the course's class_rep_did
-    sqlx::query("UPDATE courses SET class_rep_did = ? WHERE uri = ?")
+    sqlx::query("UPDATE courses SET class_rep_did = $1 WHERE uri = $2")
         .bind(&input.class_rep_did)
         .bind(&input.course_uri)
-        .execute(&state.db)
+        .execute(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -502,9 +505,9 @@ pub async fn assign_class_rep(
     // Promote the DID's role in the memberships table to 'classRep'.
     // This is a best-effort update — the DID may not have a membership row
     // yet (e.g. not verified), but we still record the course assignment.
-    sqlx::query("UPDATE memberships SET role = 'classRep' WHERE did = ?")
+    sqlx::query("UPDATE memberships SET role = 'classRep' WHERE did = $1")
         .bind(&input.class_rep_did)
-        .execute(&state.db)
+        .execute(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -512,7 +515,7 @@ pub async fn assign_class_rep(
         })?;
 
     // Fetch the updated course view
-    let view = fetch_course_view(&state.db, &input.course_uri)
+    let view = fetch_course_view(&app.db, &input.course_uri)
         .await?
         .ok_or_else(|| XrpcError {
             name: XrpcErrorName::InternalServerError,

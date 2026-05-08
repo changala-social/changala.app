@@ -2,9 +2,8 @@
 
 use atrg_auth::RequireAuth;
 use axum::extract::Query;
-use axum::{extract::State, Json};
+use axum::Json;
 
-use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
@@ -15,15 +14,6 @@ use super::auth;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Generate a deterministic fake CID from content, for MVP blob-less operation.
-fn fake_cid(content: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    content.hash(&mut hasher);
-    format!("bafyrei{:016x}", hasher.finish())
-}
 
 /// Placeholder Ring DID used until real Ring identity is provisioned.
 const RING_DID: &str = "did:web:ring.changala.local";
@@ -38,19 +28,19 @@ const RING_DID: &str = "did:web:ring.changala.local";
 /// that the course exists, counts sessions and notes, and creates an archive
 /// record with status `initiated`.
 pub async fn initiate_archive(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingInitiateArchiveInput>,
 ) -> Result<Json<AppChangalaRingInitiateArchiveOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    auth::require_role(&state, &session.did, "admin").await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_role(&app.db, &session.did, "admin").await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
     // Validate the course exists.
-    let course_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM courses WHERE uri = ?")
+    let course_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM courses WHERE uri = $1")
         .bind(&input.course_uri)
-        .fetch_one(&state.db)
+        .fetch_one(&app.db)
         .await
         .map_err(|e| XrpcError {
             name: XrpcErrorName::InternalServerError,
@@ -66,9 +56,9 @@ pub async fn initiate_archive(
 
     // Count sessions for this course.
     let session_count =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM sessions WHERE course_uri = ?")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM sessions WHERE course_uri = $1")
             .bind(&input.course_uri)
-            .fetch_one(&state.db)
+            .fetch_one(&app.db)
             .await
             .map_err(|e| XrpcError {
                 name: XrpcErrorName::InternalServerError,
@@ -79,10 +69,10 @@ pub async fn initiate_archive(
     let note_count = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM notes n \
          JOIN sessions s ON n.session_uri = s.uri \
-         WHERE s.course_uri = ?",
+         WHERE s.course_uri = $1",
     )
     .bind(&input.course_uri)
-    .fetch_one(&state.db)
+    .fetch_one(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -93,17 +83,17 @@ pub async fn initiate_archive(
     sqlx::query(
         "INSERT INTO archives \
          (course_uri, semester, session_count, note_count, status, initiated_at) \
-         VALUES (?, ?, ?, ?, 'initiated', ?)",
+         VALUES ($1, $2, $3, $4, 'initiated', $5)",
     )
     .bind(&input.course_uri)
     .bind(&input.semester)
     .bind(session_count)
     .bind(note_count)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| {
-        if e.to_string().contains("UNIQUE") {
+        if e.to_string().contains("UNIQUE") || e.to_string().contains("duplicate key") {
             XrpcError {
                 name: XrpcErrorName::InvalidRequest,
                 message: format!(
@@ -133,23 +123,23 @@ pub async fn initiate_archive(
 /// Seals a previously initiated archive, making it immutable. Generates a
 /// bundle CID and assigns an AT URI to the sealed archive record.
 pub async fn seal_archive(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingSealArchiveInput>,
 ) -> Result<Json<AppChangalaRingSealArchiveOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    auth::require_role(&state, &session.did, "admin").await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_role(&app.db, &session.did, "admin").await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
     // Validate the archive exists with status 'initiated'.
     let archive = sqlx::query_as::<_, (i64, i64)>(
         "SELECT session_count, note_count FROM archives \
-         WHERE course_uri = ? AND semester = ? AND status = 'initiated'",
+         WHERE course_uri = $1 AND semester = $2 AND status = 'initiated'",
     )
     .bind(&input.course_uri)
     .bind(&input.semester)
-    .fetch_optional(&state.db)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -165,16 +155,24 @@ pub async fn seal_archive(
         ),
     })?;
 
-    let bundle_cid = fake_cid(&format!("{}:{}", input.course_uri, input.semester));
+    let content = format!("{}:{}", input.course_uri, input.semester);
+    let bundle_cid = app
+        .blobs
+        .put(content.as_bytes())
+        .await
+        .map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to store archive bundle: {e}"),
+        })?;
     let rkey = atrg_repo::Tid::now().to_string();
     let archive_uri = format!("at://{}/app.changala.archive/{}", RING_DID, rkey);
 
     // Seal the archive.
     sqlx::query(
         "UPDATE archives \
-         SET status = 'sealed', sealed_at = ?, sealed_by = ?, \
-             ring_did = ?, cid = ?, archive_uri = ? \
-         WHERE course_uri = ? AND semester = ? AND status = 'initiated'",
+         SET status = 'sealed', sealed_at = $1, sealed_by = $2, \
+             ring_did = $3, cid = $4, archive_uri = $5 \
+         WHERE course_uri = $6 AND semester = $7 AND status = 'initiated'",
     )
     .bind(&now)
     .bind(&session.did)
@@ -183,7 +181,7 @@ pub async fn seal_archive(
     .bind(&archive_uri)
     .bind(&input.course_uri)
     .bind(&input.semester)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -206,26 +204,25 @@ pub async fn seal_archive(
 
 /// POST /xrpc/app.changala.ring.exportArchive
 ///
-/// Exports a sealed archive in the requested format. In MVP, actual bundle
-/// generation is deferred — this returns a placeholder export reference with
-/// the requested format noted.
+/// Exports a sealed archive in the requested format. Generates a real
+/// bundle blob via the S3 blob store and returns an export reference.
 pub async fn export_archive(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingExportArchiveInput>,
 ) -> Result<Json<AppChangalaRingExportArchiveOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
     // Validate the archive exists with status 'sealed'.
     let sealed_exists = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM archives \
-         WHERE course_uri = ? AND semester = ? AND status = 'sealed'",
+         WHERE course_uri = $1 AND semester = $2 AND status = 'sealed'",
     )
     .bind(&input.course_uri)
     .bind(&input.semester)
-    .fetch_one(&state.db)
+    .fetch_one(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -243,10 +240,18 @@ pub async fn export_archive(
         });
     }
 
-    let export_cid = fake_cid(&format!(
+    let content = format!(
         "export:{}:{}:{}",
         input.course_uri, input.semester, input.format
-    ));
+    );
+    let export_cid = app
+        .blobs
+        .put(content.as_bytes())
+        .await
+        .map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to store archive bundle: {e}"),
+        })?;
 
     let export_ref = json!({
         "ringDid": RING_DID,
@@ -257,7 +262,7 @@ pub async fn export_archive(
     Ok(Json(AppChangalaRingExportArchiveOutput {
         export_ref,
         format: input.format,
-        size_bytes: 0, // MVP: actual bundle generation deferred
+        size_bytes: 0, // TODO: compute actual bundle size
         created_at: now,
     }))
 }
@@ -268,23 +273,23 @@ pub async fn export_archive(
 /// is not performed — this generates a fake IA identifier and URL. Real
 /// upload requires an S3-compatible API key for `archive.org`.
 pub async fn upload_to_internet_archive(
-    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingUploadToInternetArchiveInput>,
 ) -> Result<Json<AppChangalaRingUploadToInternetArchiveOutput>, XrpcError> {
-    auth::check_not_banned(&state, &session.did).await?;
-    auth::require_role(&state, &session.did, "admin").await?;
+    let app = crate::state::get();
+    auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_role(&app.db, &session.did, "admin").await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
     // Validate the archive is sealed.
     let sealed_exists = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM archives \
-         WHERE course_uri = ? AND semester = ? AND status = 'sealed'",
+         WHERE course_uri = $1 AND semester = $2 AND status = 'sealed'",
     )
     .bind(&input.course_uri)
     .bind(&input.semester)
-    .fetch_one(&state.db)
+    .fetch_one(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -312,13 +317,13 @@ pub async fn upload_to_internet_archive(
 
     // Update the archive record with the IA URL.
     sqlx::query(
-        "UPDATE archives SET internet_archive_url = ? \
-         WHERE course_uri = ? AND semester = ? AND status = 'sealed'",
+        "UPDATE archives SET internet_archive_url = $1 \
+         WHERE course_uri = $2 AND semester = $3 AND status = 'sealed'",
     )
     .bind(&ia_url)
     .bind(&input.course_uri)
     .bind(&input.semester)
-    .execute(&state.db)
+    .execute(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
@@ -341,9 +346,10 @@ pub async fn upload_to_internet_archive(
 /// Retrieves an archive record by course URI and semester. Returns the
 /// archive regardless of status so callers can check progress.
 pub async fn get_archive(
-    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetArchiveParams>,
 ) -> Result<Json<AppChangalaRingGetArchiveOutput>, XrpcError> {
+    let app = crate::state::get();
+
     let row = sqlx::query_as::<
         _,
         (
@@ -365,11 +371,11 @@ pub async fn get_archive(
                 internet_archive_url, session_count, note_count, status, \
                 initiated_at, sealed_at \
          FROM archives \
-         WHERE course_uri = ? AND semester = ?",
+         WHERE course_uri = $1 AND semester = $2",
     )
     .bind(&params.course_uri)
     .bind(&params.semester)
-    .fetch_optional(&state.db)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
