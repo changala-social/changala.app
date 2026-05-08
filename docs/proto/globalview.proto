@@ -1,0 +1,345 @@
+syntax = "proto3";
+
+package changala.globalview.v1;
+
+import "changala/common/v1/types.proto";
+
+option go_package = "github.com/changala/changala/gen/changala/globalview/v1;globalviewv1";
+
+// ─────────────────────────────────────────────
+// FeedService
+//
+// Serves materialised, aggregated read views.
+// The Global View subscribes to the ATProto
+// firehose (via Jetstream) from all known PDSes
+// and Ring deployments, and maintains these
+// views as records arrive.
+//
+// All data here is derived — the PDS and Ring
+// are the sources of truth. The Global View
+// can be rebuilt from scratch by replaying
+// the PDS subscribeRepos stream.
+// ─────────────────────────────────────────────
+
+service FeedService {
+  // All notes for a session, enriched with vote counts and labels.
+  rpc GetNotes(GetNotesRequest) returns (GetNotesResponse);
+
+  // Session activity feed for a course.
+  rpc GetCourseFeed(GetCourseFeedRequest) returns (GetCourseFeedResponse);
+
+  // Activity from DIDs the caller follows (ATProto social graph, read-only).
+  rpc GetSocialFeed(GetSocialFeedRequest) returns (GetSocialFeedResponse);
+
+  // Institution-wide trending keywords across all live/recent sessions.
+  rpc GetTrendingKeywords(GetTrendingKeywordsRequest) returns (GetTrendingKeywordsResponse);
+
+  // Onboarding helper: which courses have people you follow enrolled in?
+  rpc GetFollowedEnrollments(GetFollowedEnrollmentsRequest) returns (GetFollowedEnrollmentsResponse);
+
+  // Recently sealed course archives from any Ring on the network.
+  rpc GetGlobalArchiveFeed(GetGlobalArchiveFeedRequest) returns (GetGlobalArchiveFeedResponse);
+}
+
+// ─────────────────────────────────────────────
+// SearchService
+//
+// Full-text search over world-public records.
+// Institution-public and course-enrolled records
+// require an authenticated DID with appropriate
+// membership.
+// ─────────────────────────────────────────────
+
+service SearchService {
+  rpc SearchNotes(SearchNotesRequest) returns (SearchNotesResponse);
+  rpc SearchCourses(SearchCoursesRequest) returns (SearchCoursesResponse);
+  rpc SearchArchive(SearchArchiveRequest) returns (SearchArchiveResponse);
+}
+
+// ─────────────────────────────────────────────
+// HistogramService
+//
+// Keyword histograms materialised from firehose
+// events. Per-user attribution never exposed.
+// ─────────────────────────────────────────────
+
+service HistogramService {
+  rpc GetKeywordHistogram(GetKeywordHistogramRequest) returns (GetKeywordHistogramResponse);
+}
+
+// ─────────────────────────────────────────────
+// NotificationService
+// ─────────────────────────────────────────────
+
+service NotificationService {
+  rpc GetNotifications(GetNotificationsRequest) returns (GetNotificationsResponse);
+  rpc MarkNotificationRead(MarkNotificationReadRequest) returns (MarkNotificationReadResponse);
+  rpc MarkAllRead(MarkAllReadRequest) returns (MarkAllReadResponse);
+}
+
+// ─────────────────────────────────────────────
+// Messages
+// ─────────────────────────────────────────────
+
+// ── Shared Note View ────────────────────────
+
+// A note record enriched with materialised signals.
+// Actual content must be fetched from the Ring using ring_ref.
+message NoteView {
+  string                        uri         = 1;  // AT URI on author's PDS
+  string                        author_did  = 2;
+  string                        session_uri = 3;
+  changala.common.v1.NoteFormat format      = 4;
+  changala.common.v1.RingRef    ring_ref    = 5;  // Fetch content from Ring using this
+  int32                         version     = 6;
+  int32                         vote_count  = 7;  // Materialised
+  repeated changala.common.v1.LabelSignal labels = 8;
+  optional string               summary     = 9;
+  string                        created_at  = 10; // RFC3339
+}
+
+// ── GetNotes ────────────────────────────────
+
+enum NoteSortBy {
+  NOTE_SORT_BY_UNSPECIFIED = 0;
+  NOTE_SORT_BY_VOTES       = 1;
+  NOTE_SORT_BY_CREATED_AT  = 2;
+}
+
+message GetNotesRequest {
+  string          session_uri = 1;
+  NoteSortBy      sort_by     = 2; // default: VOTES
+  optional string cursor      = 3;
+  int32           limit       = 4; // default 50, max 100
+}
+
+message GetNotesResponse {
+  repeated NoteView notes  = 1;
+  optional string   cursor = 2;
+}
+
+// ── GetCourseFeed ───────────────────────────
+
+message CourseFeedItem {
+  enum ItemType {
+    ITEM_TYPE_UNSPECIFIED   = 0;
+    ITEM_TYPE_SESSION_OPENED    = 1;
+    ITEM_TYPE_SESSION_ENDED     = 2;
+    ITEM_TYPE_SESSION_CANCELLED = 3;
+    ITEM_TYPE_NOTE_CREATED      = 4;
+    ITEM_TYPE_COLLECTIVE_NOTE_UPDATED = 5;
+    ITEM_TYPE_ARCHIVE_SEALED    = 6;
+  }
+  ItemType        type        = 1;
+  string          actor_did   = 2;
+  string          subject_uri = 3; // AT URI of the relevant record
+  optional string session_uri = 4;
+  string          created_at  = 5; // RFC3339
+}
+
+message GetCourseFeedRequest {
+  string          course_uri = 1;
+  optional string cursor     = 2;
+  int32           limit      = 3; // default 50, max 100
+}
+
+message GetCourseFeedResponse {
+  repeated CourseFeedItem feed   = 1;
+  optional string         cursor = 2;
+}
+
+// ── GetSocialFeed ───────────────────────────
+
+message SocialFeedItem {
+  enum ItemType {
+    ITEM_TYPE_UNSPECIFIED  = 0;
+    ITEM_TYPE_NOTE         = 1;
+    ITEM_TYPE_VOTE         = 2;
+    ITEM_TYPE_EDIT_PROPOSAL = 3;
+    ITEM_TYPE_ENROLLMENT   = 4;
+  }
+  ItemType        type        = 1;
+  string          actor_did   = 2; // A DID the caller follows
+  string          subject_uri = 3;
+  optional string course_uri  = 4;
+  optional string session_uri = 5;
+  string          created_at  = 6; // RFC3339
+}
+
+message GetSocialFeedRequest {
+  optional string cursor = 1;
+  int32           limit  = 2; // default 50, max 100
+}
+
+message GetSocialFeedResponse {
+  repeated SocialFeedItem feed   = 1;
+  optional string         cursor = 2;
+}
+
+// ── GetTrendingKeywords ──────────────────────
+
+message TrendingKeyword {
+  string text         = 1;
+  int32  count        = 2;
+  string session_uri  = 3; // Which session this is trending in
+  string course_uri   = 4;
+}
+
+message GetTrendingKeywordsRequest {
+  string institution_did = 1;
+  // Limit to sessions active in the last N hours. Default: 24.
+  optional int32 within_hours = 2;
+  int32          limit        = 3; // default 20
+}
+
+message GetTrendingKeywordsResponse {
+  repeated TrendingKeyword keywords    = 1;
+  string                   computed_at = 2; // RFC3339
+}
+
+// ── GetFollowedEnrollments ──────────────────
+
+message FollowedEnrollment {
+  string course_uri      = 1;
+  string course_title    = 2;
+  string institution_did = 3;
+  int32  followed_count  = 4; // How many people you follow are enrolled
+}
+
+message GetFollowedEnrollmentsRequest {
+  int32 limit = 1; // default 20
+}
+
+message GetFollowedEnrollmentsResponse {
+  repeated FollowedEnrollment enrollments = 1;
+}
+
+// ── GetGlobalArchiveFeed ────────────────────
+
+message ArchiveFeedItem {
+  string archive_uri           = 1;
+  string course_uri            = 2;
+  string course_title          = 3;
+  string semester              = 4;
+  string institution_did       = 5;
+  optional string ia_url       = 6; // archive.org URL if uploaded
+  int32  session_count         = 7;
+  string sealed_at             = 8; // RFC3339
+}
+
+message GetGlobalArchiveFeedRequest {
+  optional string institution_did = 1; // Filter by institution
+  optional string cursor          = 2;
+  int32           limit           = 3; // default 25
+}
+
+message GetGlobalArchiveFeedResponse {
+  repeated ArchiveFeedItem items  = 1;
+  optional string          cursor = 2;
+}
+
+// ── Search ──────────────────────────────────
+
+message SearchNotesRequest {
+  string          q               = 1;
+  optional string institution_did = 2;
+  optional string course_uri      = 3;
+  optional string semester        = 4;
+  optional bool   archived_only   = 5;
+  optional string cursor          = 6;
+  int32           limit           = 7; // default 25, max 50
+}
+
+message SearchNotesResponse {
+  repeated NoteView notes      = 1;
+  int32             hits_total = 2;
+  optional string   cursor     = 3;
+}
+
+message SearchCoursesRequest {
+  string          q               = 1;
+  optional string institution_did = 2;
+  optional string semester        = 3;
+  optional string cursor          = 4;
+  int32           limit           = 5; // default 25
+}
+
+message CourseSearchResult {
+  string                        uri            = 1;
+  string                        title          = 2;
+  string                        code           = 3;
+  string                        institution_did = 4;
+  string                        department     = 5;
+  string                        semester       = 6;
+  changala.common.v1.Visibility visibility     = 7;
+  int32                         enrolled_count = 8;
+}
+
+message SearchCoursesResponse {
+  repeated CourseSearchResult courses    = 1;
+  int32                       hits_total = 2;
+  optional string             cursor     = 3;
+}
+
+message SearchArchiveRequest {
+  string          q               = 1;
+  optional string institution_did = 2;
+  optional string semester        = 3;
+  optional string cursor          = 4;
+  int32           limit           = 5; // default 25
+}
+
+message SearchArchiveResponse {
+  repeated ArchiveFeedItem results    = 1;
+  int32                    hits_total = 2;
+  optional string          cursor     = 3;
+}
+
+// ── Histogram ───────────────────────────────
+
+message HistogramEntry {
+  string text  = 1;
+  int32  count = 2;
+}
+
+message GetKeywordHistogramRequest {
+  string session_uri = 1;
+}
+
+message GetKeywordHistogramResponse {
+  string                   session_uri         = 1;
+  bool                     window_open         = 2;
+  optional string          window_expires_at   = 3; // RFC3339, present if window_open
+  int32                    total_submissions   = 4;
+  repeated HistogramEntry  entries             = 5; // Sorted by count desc
+}
+
+// ── Notifications ───────────────────────────
+
+message GetNotificationsRequest {
+  optional bool   unread_only = 1;
+  optional string cursor      = 2;
+  int32           limit       = 3; // default 50, max 100
+}
+
+message GetNotificationsResponse {
+  repeated changala.common.v1.Notification notifications = 1;
+  int32                                    unread_count  = 2;
+  optional string                          cursor        = 3;
+}
+
+message MarkNotificationReadRequest {
+  string notification_id = 1;
+}
+
+message MarkNotificationReadResponse {
+  string notification_id = 1;
+}
+
+message MarkAllReadRequest {
+  // Marks all notifications for the authenticated DID as read.
+}
+
+message MarkAllReadResponse {
+  int32 marked_count = 1;
+}

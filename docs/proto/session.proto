@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+package changala.ring.v1;
+
+import "changala/common/v1/types.proto";
+
+option go_package = "github.com/changala/changala/gen/changala/ring/v1;ringv1";
+
+// ─────────────────────────────────────────────
+// SessionService
+//
+// Manages the full session lifecycle.
+// Only the Class Rep may mutate session status.
+// Status transitions trigger notifications to
+// all enrolled students via the notification
+// pipeline.
+// ─────────────────────────────────────────────
+
+service SessionService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+
+  // Transitions: scheduled → live
+  // Triggers: sessionOpened notifications
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+
+  // Transitions: live → ended
+  // Triggers: keyword window (60 min), keywordWindowClosing notifications
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+
+  // Transitions: scheduled|live → cancelled
+  // Triggers: sessionCancelled HIGH PRIORITY notifications
+  rpc CancelSession(CancelSessionRequest) returns (CancelSessionResponse);
+
+  // Transitions: scheduled → rescheduled
+  // Triggers: sessionRescheduled HIGH PRIORITY notifications
+  rpc RescheduleSession(RescheduleSessionRequest) returns (RescheduleSessionResponse);
+}
+
+// ─── Shared view ────────────────────────────
+
+message SessionView {
+  string                            uri                      = 1;  // AT URI
+  string                            course_uri               = 2;
+  string                            scheduled_at             = 3;  // RFC3339
+  int32                             duration_mins            = 4;
+  changala.common.v1.SessionStatus  status                   = 5;
+  string                            created_by               = 6;  // DID of Class Rep
+  optional string                   topic                    = 7;
+  optional string                   opened_at                = 8;  // RFC3339
+  optional string                   closed_at                = 9;  // RFC3339
+  optional string                   keyword_window_expires_at = 10; // RFC3339
+  bool                              keyword_window_open       = 11;
+  optional string                   rescheduled_to           = 12; // RFC3339
+  string                            created_at               = 13; // RFC3339
+}
+
+// ─── CreateSession ──────────────────────────
+
+message CreateSessionRequest {
+  string          course_uri    = 1;
+  string          scheduled_at  = 2;  // RFC3339
+  int32           duration_mins = 3;
+  optional string topic         = 4;
+}
+
+message CreateSessionResponse {
+  SessionView session = 1;
+}
+
+// ─── GetSession ─────────────────────────────
+
+message GetSessionRequest {
+  string uri = 1; // AT URI of the session
+}
+
+message GetSessionResponse {
+  SessionView session = 1;
+}
+
+// ─── ListSessions ───────────────────────────
+
+message ListSessionsRequest {
+  string                           course_uri = 1;
+  // Optionally filter by status
+  repeated changala.common.v1.SessionStatus statuses = 2;
+  optional string                  cursor     = 3;
+  int32                            limit      = 4; // default 50, max 200
+}
+
+message ListSessionsResponse {
+  repeated SessionView sessions = 1;
+  optional string      cursor   = 2;
+}
+
+// ─── OpenSession ────────────────────────────
+
+message OpenSessionRequest {
+  string session_uri = 1;
+}
+
+message OpenSessionResponse {
+  SessionView session = 1;
+}
+
+// ─── CloseSession ───────────────────────────
+
+message CloseSessionRequest {
+  string session_uri = 1;
+}
+
+message CloseSessionResponse {
+  SessionView session                  = 1;
+  string      keyword_window_expires_at = 2; // RFC3339 — 60 min from now
+}
+
+// ─── CancelSession ──────────────────────────
+
+message CancelSessionRequest {
+  string          session_uri = 1;
+  optional string reason      = 2; // Brief reason shown in the notification
+}
+
+message CancelSessionResponse {
+  SessionView session = 1;
+}
+
+// ─── RescheduleSession ──────────────────────
+
+message RescheduleSessionRequest {
+  string session_uri   = 1;
+  string rescheduled_to = 2; // RFC3339 — new scheduled time
+}
+
+message RescheduleSessionResponse {
+  SessionView session = 1;
+}

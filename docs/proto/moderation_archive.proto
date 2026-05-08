@@ -1,0 +1,198 @@
+syntax = "proto3";
+
+package changala.ring.v1;
+
+import "changala/common/v1/types.proto";
+
+option go_package = "github.com/changala/changala/gen/changala/ring/v1;ringv1";
+
+// ─────────────────────────────────────────────
+// ModerationService
+//
+// Instance-side DID deny list.
+// A banned DID's records are ignored by the
+// Ring's indexer and the Global View.
+// TTL is optional — omit for permanent bans.
+//
+// ATProto labels are the correct long-term
+// moderation mechanism. This deny list is a
+// pragmatic MVP shim, replaceable post-MVP.
+// ─────────────────────────────────────────────
+
+service ModerationService {
+  rpc BanDID(BanDIDRequest) returns (BanDIDResponse);
+  rpc LiftBan(LiftBanRequest) returns (LiftBanResponse);
+  rpc ListBans(ListBansRequest) returns (ListBansResponse);
+  rpc IsBanned(IsBannedRequest) returns (IsBannedResponse);
+}
+
+// ─────────────────────────────────────────────
+// ArchiveService
+//
+// End-of-semester archival pipeline.
+// Manual triggers only — never automatic.
+// Once sealed, Ring marks all associated blobs
+// as immutable and the archive record is written.
+// ─────────────────────────────────────────────
+
+service ArchiveService {
+  // Begins the archival process for a course semester.
+  // Notifies all enrolled students.
+  rpc InitiateArchive(InitiateArchiveRequest) returns (InitiateArchiveResponse);
+
+  // Seals the archive. Marks all Ring blobs for this
+  // course + semester as immutable. Writes the
+  // app.changala.archive record.
+  rpc SealArchive(SealArchiveRequest) returns (SealArchiveResponse);
+
+  // Exports the archive as a structured bundle.
+  rpc ExportArchive(ExportArchiveRequest) returns (ExportArchiveResponse);
+
+  // Uploads the sealed archive bundle to archive.org.
+  // Requires a valid Internet Archive S3-like API key
+  // configured in Ring settings.
+  rpc UploadToInternetArchive(UploadToInternetArchiveRequest) returns (UploadToInternetArchiveResponse);
+
+  // Returns the archive record for a sealed course semester.
+  rpc GetArchive(GetArchiveRequest) returns (GetArchiveResponse);
+}
+
+// ─────────────────────────────────────────────
+// Messages
+// ─────────────────────────────────────────────
+
+// ── Moderation ──────────────────────────────
+
+message BanDIDRequest {
+  string          target_did = 1;
+  optional int64  ttl_seconds = 2; // Omit for permanent ban
+  optional string reason      = 3;
+}
+
+message BanDIDResponse {
+  string          target_did  = 1;
+  bool            permanent   = 2;
+  optional string expires_at  = 3; // RFC3339, present if ttl was set
+  string          banned_at   = 4; // RFC3339
+}
+
+message LiftBanRequest {
+  string target_did = 1;
+}
+
+message LiftBanResponse {
+  string target_did = 1;
+  string lifted_at  = 2; // RFC3339
+}
+
+message ListBansRequest {
+  optional bool   permanent_only = 1;
+  optional string cursor         = 2;
+  int32           limit          = 3; // default 50
+}
+
+message BanView {
+  string          target_did = 1;
+  bool            permanent  = 2;
+  optional string expires_at = 3; // RFC3339
+  optional string reason     = 4;
+  string          banned_at  = 5; // RFC3339
+}
+
+message ListBansResponse {
+  repeated BanView bans   = 1;
+  optional string  cursor = 2;
+}
+
+message IsBannedRequest {
+  string did = 1;
+}
+
+message IsBannedResponse {
+  bool            banned     = 1;
+  optional string expires_at = 2; // RFC3339, present if temporary
+}
+
+// ── Archive ─────────────────────────────────
+
+message InitiateArchiveRequest {
+  string course_uri = 1; // AT URI of the course
+  string semester   = 2; // e.g. "2024-odd"
+}
+
+message InitiateArchiveResponse {
+  string course_uri    = 1;
+  string semester      = 2;
+  string initiated_at  = 3; // RFC3339
+  int32  session_count = 4; // Sessions that will be included
+  int32  note_count    = 5; // Notes that will be included
+}
+
+enum ExportFormat {
+  EXPORT_FORMAT_UNSPECIFIED = 0;
+  EXPORT_FORMAT_LATEX_BUNDLE = 1; // LaTeX source + compiled PDF bundle (tar.gz)
+  EXPORT_FORMAT_JSON        = 2;  // Structured JSON of all records
+  EXPORT_FORMAT_WIKITEXT    = 3;  // MediaWiki markup for institutions that want it
+}
+
+message SealArchiveRequest {
+  string course_uri = 1;
+  string semester   = 2;
+}
+
+message SealArchiveResponse {
+  string                     archive_uri  = 1; // AT URI of the app.changala.archive record
+  changala.common.v1.RingRef bundle_ref   = 2; // Default LaTeX bundle blob
+  string                     sealed_at    = 3; // RFC3339
+  int32                      session_count = 4;
+  int32                      note_count   = 5;
+}
+
+message ExportArchiveRequest {
+  string       course_uri = 1;
+  string       semester   = 2;
+  ExportFormat format     = 3;
+}
+
+message ExportArchiveResponse {
+  changala.common.v1.RingRef export_ref  = 1; // Blob on Ring
+  ExportFormat               format      = 2;
+  int64                      size_bytes  = 3;
+  string                     created_at  = 4; // RFC3339
+}
+
+message UploadToInternetArchiveRequest {
+  string course_uri = 1;
+  string semester   = 2;
+  // Optional additional metadata for the archive.org item
+  optional string ia_title       = 3;
+  optional string ia_description = 4;
+  optional string ia_subject     = 5; // Comma-separated subject tags
+}
+
+message UploadToInternetArchiveResponse {
+  string ia_identifier = 1; // archive.org item identifier
+  string ia_url        = 2; // Direct URL to the archive.org item
+  string uploaded_at   = 3; // RFC3339
+}
+
+message GetArchiveRequest {
+  string course_uri = 1;
+  string semester   = 2;
+}
+
+message ArchiveView {
+  string                     archive_uri           = 1;
+  string                     course_uri            = 2;
+  string                     semester              = 3;
+  string                     sealed_by             = 4; // DID
+  changala.common.v1.RingRef bundle_ref            = 5;
+  optional string            internet_archive_url  = 6;
+  int32                      session_count         = 7;
+  int32                      note_count            = 8;
+  string                     sealed_at             = 9; // RFC3339
+}
+
+message GetArchiveResponse {
+  ArchiveView archive = 1;
+}

@@ -1,0 +1,36 @@
+[app]
+name = "changala"
+host = "127.0.0.1"
+port = 3000
+secret_key = "5d35c20908906d926e1804c21a664dc744e8a25f49fd3121f10dc3baad462e2c"
+cors_origins = ["http://localhost:5173"]
+environment = "development"
+
+[auth]
+client_id = "http://localhost:3000/client-metadata.json"
+redirect_uri = "http://localhost:3000/auth/callback"
+scope = "atproto transition:generic"
+
+[database]
+url = "sqlite://changala.db"
+
+[jetstream]
+host = "jetstream1.us-east.bsky.network"
+collections = [
+    "app.changala.membership",
+    "app.changala.keyword",
+    "app.changala.note",
+    "app.changala.vote",
+    "app.changala.collectivenote.proposal",
+    "app.changala.label",
+    "app.changala.brain.node",
+    "app.changala.brain.link"
+]
+
+# [firehose]
+# relay = "wss://bsky.network"
+
+# [rate_limit]
+# requests_per_second = 10.0
+# burst = 50
+# enabled = true

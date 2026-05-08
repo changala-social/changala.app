@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package changala.ring.v1;
+
+import "changala/common/v1/types.proto";
+
+option go_package = "github.com/changala/changala/gen/changala/ring/v1;ringv1";
+
+// ─────────────────────────────────────────────
+// IdentityService
+//
+// Handles institution email verification and
+// membership credential issuance.
+// ─────────────────────────────────────────────
+
+service IdentityService {
+  // Step 1: call with did + email → OTP dispatched.
+  // Step 2: call with did + email + otp → membership written to PDS.
+  rpc VerifyEmail(VerifyEmailRequest) returns (VerifyEmailResponse);
+
+  // Returns all institution memberships for a DID
+  // that this Ring is aware of.
+  rpc GetMemberships(GetMembershipsRequest) returns (GetMembershipsResponse);
+
+  // Returns the caller's role within this Ring's institution.
+  // Returns NOT_FOUND if the DID has no verified membership here.
+  rpc GetRole(GetRoleRequest) returns (GetRoleResponse);
+}
+
+// ─── VerifyEmail ────────────────────────────
+
+message VerifyEmailRequest {
+  string did   = 1;
+  string email = 2;
+  // Omit on first call (triggers OTP send).
+  // Required on second call (completes verification).
+  optional string otp = 3;
+}
+
+message VerifyEmailResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_OTP_SENT    = 1; // OTP dispatched, await second call
+    STATUS_VERIFIED    = 2; // Membership record written to PDS
+  }
+  Status status = 1;
+  // Present only when status = VERIFIED.
+  optional string membership_uri = 2; // AT URI of the new membership record
+}
+
+// ─── GetMemberships ─────────────────────────
+
+message GetMembershipsRequest {
+  string did = 1;
+}
+
+message MembershipView {
+  string                   institution_did    = 1;
+  string                   institution_domain = 2;
+  changala.common.v1.Role  role               = 3;
+  string                   verified_at        = 4; // RFC3339
+  string                   membership_uri     = 5; // AT URI on PDS
+}
+
+message GetMembershipsResponse {
+  repeated MembershipView memberships = 1;
+}
+
+// ─── GetRole ────────────────────────────────
+
+message GetRoleRequest {
+  string did = 1;
+}
+
+message GetRoleResponse {
+  changala.common.v1.Role role = 1;
+}

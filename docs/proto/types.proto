@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package changala.common.v1;
+
+option go_package = "github.com/changala/changala/gen/changala/common/v1;commonv1";
+
+// ─────────────────────────────────────────────
+// Shared enums
+// ─────────────────────────────────────────────
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_STUDENT     = 1;
+  ROLE_CLASS_REP   = 2;
+  ROLE_ADMIN       = 3;
+  ROLE_FACULTY     = 4; // post-MVP
+}
+
+enum SessionStatus {
+  SESSION_STATUS_UNSPECIFIED  = 0;
+  SESSION_STATUS_SCHEDULED    = 1;
+  SESSION_STATUS_LIVE         = 2;
+  SESSION_STATUS_ENDED        = 3;
+  SESSION_STATUS_CANCELLED    = 4;
+  SESSION_STATUS_RESCHEDULED  = 5;
+}
+
+enum NoteFormat {
+  NOTE_FORMAT_UNSPECIFIED = 0;
+  NOTE_FORMAT_LATEX       = 1;
+  NOTE_FORMAT_PLAINTEXT   = 2;
+}
+
+enum Visibility {
+  VISIBILITY_UNSPECIFIED  = 0;
+  VISIBILITY_WORLD        = 1;
+  VISIBILITY_INSTITUTION  = 2;
+  VISIBILITY_COURSE       = 3;
+}
+
+enum LabelVal {
+  LABEL_VAL_UNSPECIFIED        = 0;
+  LABEL_VAL_ENDORSED           = 1; // post-MVP (requires faculty role)
+  LABEL_VAL_COMMUNITY_VERIFIED = 2;
+  LABEL_VAL_ARCHIVED           = 3;
+}
+
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED        = 0;
+  NOTIFICATION_TYPE_SESSION_OPENED     = 1;
+  NOTIFICATION_TYPE_SESSION_CANCELLED  = 2;
+  NOTIFICATION_TYPE_SESSION_RESCHEDULED = 3;
+  NOTIFICATION_TYPE_KEYWORD_WINDOW_CLOSING = 4;
+  NOTIFICATION_TYPE_NOTE_VOTED         = 5;
+  NOTIFICATION_TYPE_EDIT_PROPOSED      = 6;
+  NOTIFICATION_TYPE_EDIT_ACCEPTED      = 7;
+  NOTIFICATION_TYPE_ARCHIVE_INITIATED  = 8;
+  NOTIFICATION_TYPE_LABEL_APPLIED      = 9;
+}
+
+// ─────────────────────────────────────────────
+// Shared messages
+// ─────────────────────────────────────────────
+
+// A reference to a blob stored on a Ring instance.
+// Composed of the Ring's DID and the blob's content identifier.
+message RingRef {
+  string ring_did = 1; // DID of the Ring holding the blob
+  string cid      = 2; // Content-addressed blob identifier
+}
+
+// A label signal as surfaced in the Global View.
+message LabelSignal {
+  LabelVal val        = 1;
+  string   src_did    = 2;
+  string   created_at = 3; // RFC3339
+}
+
+// A single notification.
+message Notification {
+  string           id            = 1;
+  string           recipient_did = 2;
+  NotificationType type          = 3;
+  string           subject_uri   = 4; // AT URI of the relevant record
+  bool             read          = 5;
+  string           created_at    = 6; // RFC3339
+}

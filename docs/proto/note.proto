@@ -1,0 +1,285 @@
+syntax = "proto3";
+
+package changala.ring.v1;
+
+import "changala/common/v1/types.proto";
+
+option go_package = "github.com/changala/changala/gen/changala/ring/v1;ringv1";
+
+// ─────────────────────────────────────────────
+// NoteService
+//
+// Handles student notes, keywords, and the
+// collaborative collective note for each session.
+//
+// Write flow for notes:
+//   1. Client calls CreateNote → Ring stores blob,
+//      returns ringRef + a pre-filled PDS record template.
+//   2. Client writes the template to their PDS via
+//      com.atproto.repo.createRecord.
+//
+// This two-step dance keeps the blob on the Ring
+// and the lightweight metadata record on the user's
+// PDS — preserving data ownership.
+// ─────────────────────────────────────────────
+
+service NoteService {
+  // ── Keywords ──────────────────────────────
+
+  // Submit a keyword for a session.
+  // Only accepted while the keyword window is open.
+  rpc AddKeyword(AddKeywordRequest) returns (AddKeywordResponse);
+
+  // ── Notes ─────────────────────────────────
+
+  // Store note content on the Ring.
+  // Returns a ringRef + PDS record template.
+  // Client must write the template to their PDS to complete the flow.
+  rpc CreateNote(CreateNoteRequest) returns (CreateNoteResponse);
+
+  // Store a new version of a note on the Ring.
+  // Linked to the previous version via parentNoteUri.
+  rpc VersionNote(VersionNoteRequest) returns (VersionNoteResponse);
+
+  // Retrieve raw note content from the Ring by CID.
+  rpc GetNoteContent(GetNoteContentRequest) returns (GetNoteContentResponse);
+
+  // Returns the full version chain for a note (git-like history).
+  rpc GetNoteHistory(GetNoteHistoryRequest) returns (GetNoteHistoryResponse);
+
+  // ── Collective Note ───────────────────────
+
+  // Propose an edit (unified diff) to the session's collective note.
+  // Stores the diff blob on the Ring, writes a proposal record to PDS.
+  rpc ProposeEdit(ProposeEditRequest) returns (ProposeEditResponse);
+
+  // Class Rep accepts a pending edit proposal.
+  // Ring applies the diff to the collective note blob.
+  rpc AcceptEdit(AcceptEditRequest) returns (AcceptEditResponse);
+
+  // Class Rep rejects a pending edit proposal.
+  rpc RejectEdit(RejectEditRequest) returns (RejectEditResponse);
+
+  // Returns current collective note content for a session.
+  rpc GetCollectiveNote(GetCollectiveNoteRequest) returns (GetCollectiveNoteResponse);
+
+  // Returns pending edit proposals for a session (Class Rep view).
+  rpc ListEditProposals(ListEditProposalsRequest) returns (ListEditProposalsResponse);
+}
+
+// ─────────────────────────────────────────────
+// VoteService
+//
+// Votes are written to the user's PDS directly
+// by the client, but the Ring validates
+// eligibility (enrolled, not self-voting,
+// no duplicates) before acknowledging.
+// ─────────────────────────────────────────────
+
+service VoteService {
+  // Validate and register a vote.
+  // Client writes the app.changala.vote record to their PDS,
+  // then calls this to register it with the Ring so the Global
+  // View can be notified and the duplicate check can be enforced.
+  rpc RegisterVote(RegisterVoteRequest) returns (RegisterVoteResponse);
+}
+
+// ─────────────────────────────────────────────
+// LabelService
+//
+// Labels are written to the labeller's PDS.
+// The Ring validates that the caller has
+// permission to apply the given label val.
+// ─────────────────────────────────────────────
+
+service LabelService {
+  rpc ApplyLabel(ApplyLabelRequest) returns (ApplyLabelResponse);
+  rpc RetractLabel(RetractLabelRequest) returns (RetractLabelResponse);
+}
+
+// ─────────────────────────────────────────────
+// Messages
+// ─────────────────────────────────────────────
+
+// ── Keywords ────────────────────────────────
+
+message AddKeywordRequest {
+  string session_uri = 1;
+  string text        = 2;
+}
+
+message AddKeywordResponse {
+  string keyword_uri         = 1; // AT URI of the written PDS record
+  string window_expires_at   = 2; // RFC3339 — when the window closes
+}
+
+// ── Notes ───────────────────────────────────
+
+// The NoteTemplate is a pre-filled app.changala.note record
+// body that the client writes verbatim to their PDS.
+// This decouples blob storage (Ring) from record ownership (PDS).
+message NoteTemplate {
+  string                        session_uri  = 1;
+  changala.common.v1.NoteFormat format       = 2;
+  changala.common.v1.RingRef    ring_ref     = 3;
+  int32                         version      = 4;
+  optional string               parent_note  = 5; // AT URI of previous version
+  optional string               summary      = 6;
+  string                        created_at   = 7; // RFC3339
+}
+
+message CreateNoteRequest {
+  string                        session_uri = 1;
+  changala.common.v1.NoteFormat format      = 2;
+  string                        content     = 3; // Raw LaTeX or plaintext
+  optional string               summary     = 4;
+  // Client-provided; allows offline drafts to preserve write time.
+  // Ring validates this falls within the active semester.
+  optional string               created_at  = 5; // RFC3339
+}
+
+message CreateNoteResponse {
+  changala.common.v1.RingRef ring_ref      = 1;
+  NoteTemplate               note_template = 2;
+}
+
+message VersionNoteRequest {
+  string                        parent_note_uri = 1; // AT URI of the note being versioned
+  changala.common.v1.NoteFormat format          = 2;
+  string                        content         = 3;
+  optional string               summary         = 4;
+  optional string               created_at      = 5; // RFC3339
+}
+
+message VersionNoteResponse {
+  changala.common.v1.RingRef ring_ref      = 1;
+  NoteTemplate               note_template = 2; // version field will be incremented
+}
+
+message GetNoteContentRequest {
+  changala.common.v1.RingRef ring_ref = 1;
+}
+
+message GetNoteContentResponse {
+  changala.common.v1.NoteFormat format  = 1;
+  bytes                         content = 2; // Raw bytes of the blob
+}
+
+message NoteVersionView {
+  string                        note_uri   = 1; // AT URI of this version's PDS record
+  int32                         version    = 2;
+  changala.common.v1.RingRef    ring_ref   = 3;
+  optional string               summary    = 4;
+  string                        created_at = 5; // RFC3339
+}
+
+message GetNoteHistoryRequest {
+  string note_uri = 1; // AT URI of any version in the chain
+}
+
+message GetNoteHistoryResponse {
+  string                    session_uri = 1;
+  string                    author_did  = 2;
+  repeated NoteVersionView  versions    = 3; // Ordered oldest → newest
+}
+
+// ── Collective Note ─────────────────────────
+
+message ProposeEditRequest {
+  string          session_uri = 1;
+  string          diff        = 2; // Unified diff against current collective note
+  optional string summary     = 3;
+}
+
+message ProposeEditResponse {
+  string                     proposal_uri  = 1; // AT URI of written PDS record
+  changala.common.v1.RingRef diff_ring_ref = 2;
+}
+
+message AcceptEditRequest {
+  string proposal_uri = 1; // AT URI of the proposal record
+}
+
+message AcceptEditResponse {
+  string                     collective_note_uri     = 1;
+  changala.common.v1.RingRef new_collective_ring_ref = 2;
+}
+
+message RejectEditRequest {
+  string proposal_uri = 1;
+}
+
+message RejectEditResponse {
+  string proposal_uri = 1;
+}
+
+message GetCollectiveNoteRequest {
+  string session_uri = 1;
+}
+
+message CollectiveNoteView {
+  string                     session_uri      = 1;
+  changala.common.v1.RingRef ring_ref         = 2;
+  repeated string            contributor_dids = 3;
+  int32                      version          = 4;
+  string                     updated_at       = 5; // RFC3339
+}
+
+message GetCollectiveNoteResponse {
+  CollectiveNoteView collective_note = 1;
+}
+
+message ListEditProposalsRequest {
+  string          session_uri  = 1;
+  optional string status_filter = 2; // "pending" | "accepted" | "rejected" — empty = all
+  optional string cursor       = 3;
+  int32           limit        = 4; // default 50
+}
+
+message EditProposalView {
+  string                     proposal_uri  = 1;
+  string                     proposer_did  = 2;
+  changala.common.v1.RingRef diff_ring_ref = 3;
+  string                     status        = 4; // "pending" | "accepted" | "rejected"
+  optional string            summary       = 5;
+  optional string            resolved_at   = 6; // RFC3339
+  optional string            resolved_by   = 7; // DID
+  string                     created_at    = 8; // RFC3339
+}
+
+message ListEditProposalsResponse {
+  repeated EditProposalView proposals = 1;
+  optional string           cursor    = 2;
+}
+
+// ── Votes ────────────────────────────────────
+
+message RegisterVoteRequest {
+  string vote_uri   = 1; // AT URI of the app.changala.vote record on the voter's PDS
+  string subject_uri = 2; // AT URI of the note or collective note being voted on
+}
+
+message RegisterVoteResponse {
+  string subject_uri  = 1;
+  int32  total_votes  = 2; // Running vote count as seen by Ring at this moment
+}
+
+// ── Labels ───────────────────────────────────
+
+message ApplyLabelRequest {
+  string                    subject_uri = 1; // AT URI of the note being labelled
+  changala.common.v1.LabelVal val       = 2;
+}
+
+message ApplyLabelResponse {
+  string label_uri = 1; // AT URI of the written app.changala.label record
+}
+
+message RetractLabelRequest {
+  string                    subject_uri = 1;
+  changala.common.v1.LabelVal val       = 2;
+}
+
+message RetractLabelResponse {
+  string label_uri = 1; // AT URI of the negation record
+}

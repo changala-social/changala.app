@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+package changala.ring.v1;
+
+import "changala/common/v1/types.proto";
+
+option go_package = "github.com/changala/changala/gen/changala/ring/v1;ringv1";
+
+// ─────────────────────────────────────────────
+// CourseService
+//
+// Manages course creation, enrollment, and
+// Class Rep assignment. Courses are stored in
+// the Ring's own DID repo — they are
+// institutional records, not personal ones.
+// ─────────────────────────────────────────────
+
+service CourseService {
+  // Admin or student volunteer creates a course.
+  rpc CreateCourse(CreateCourseRequest) returns (CreateCourseResponse);
+
+  // Returns a course by AT URI.
+  rpc GetCourse(GetCourseRequest) returns (GetCourseResponse);
+
+  // Lists all courses for this Ring's institution.
+  rpc ListCourses(ListCoursesRequest) returns (ListCoursesResponse);
+
+  // Enrolls a verified student in a course.
+  rpc EnrollStudent(EnrollStudentRequest) returns (EnrollStudentResponse);
+
+  // Returns the list of enrolled DIDs for a course.
+  // Requires course-enrolled or admin auth.
+  rpc GetEnrollments(GetEnrollmentsRequest) returns (GetEnrollmentsResponse);
+
+  // Admin assigns a Class Rep to a course.
+  rpc AssignClassRep(AssignClassRepRequest) returns (AssignClassRepResponse);
+}
+
+// ─── Shared view ────────────────────────────
+
+message CourseView {
+  string                        uri            = 1;  // AT URI
+  string                        title          = 2;
+  string                        code           = 3;
+  string                        institution_did = 4;
+  string                        department     = 5;
+  string                        semester       = 6;
+  changala.common.v1.Visibility visibility     = 7;
+  string                        created_by     = 8;  // DID
+  optional string               class_rep_did  = 9;
+  optional string               description    = 10;
+  string                        created_at     = 11; // RFC3339
+  int32                         enrolled_count = 12;
+}
+
+// ─── CreateCourse ───────────────────────────
+
+message CreateCourseRequest {
+  string                        title       = 1;
+  string                        code        = 2;
+  string                        department  = 3;
+  string                        semester    = 4;
+  changala.common.v1.Visibility visibility  = 5;
+  optional string               description = 6;
+}
+
+message CreateCourseResponse {
+  CourseView course = 1;
+}
+
+// ─── GetCourse ──────────────────────────────
+
+message GetCourseRequest {
+  string uri = 1; // AT URI of the course
+}
+
+message GetCourseResponse {
+  CourseView course = 1;
+}
+
+// ─── ListCourses ────────────────────────────
+
+message ListCoursesRequest {
+  optional string semester    = 1; // Filter by semester
+  optional string department  = 2;
+  optional string cursor      = 3;
+  int32           limit       = 4; // default 50, max 100
+}
+
+message ListCoursesResponse {
+  repeated CourseView courses = 1;
+  optional string     cursor  = 2;
+}
+
+// ─── EnrollStudent ──────────────────────────
+
+message EnrollStudentRequest {
+  string course_uri = 1; // AT URI of the course
+  // The DID is inferred from the authenticated caller.
+  // Admins may optionally specify a different DID to enroll.
+  optional string target_did = 2;
+}
+
+message EnrollStudentResponse {
+  string course_uri = 1;
+  string did        = 2;
+  string enrolled_at = 3; // RFC3339
+}
+
+// ─── GetEnrollments ─────────────────────────
+
+message GetEnrollmentsRequest {
+  string course_uri = 1;
+  optional string cursor = 2;
+  int32           limit  = 3; // default 100, max 500
+}
+
+message GetEnrollmentsResponse {
+  string          course_uri = 1;
+  repeated string dids       = 2;
+  int32           total      = 3;
+  optional string cursor     = 4;
+}
+
+// ─── AssignClassRep ─────────────────────────
+
+message AssignClassRepRequest {
+  string course_uri      = 1;
+  string class_rep_did   = 2;
+}
+
+message AssignClassRepResponse {
+  CourseView course = 1;
+}
