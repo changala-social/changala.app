@@ -84,12 +84,24 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(url = %config.database_url, "connected to PostgreSQL");
 
     // Run Changala business migrations (courses, sessions, notes, brain, etc.)
-    // atrg's internal migrations (atrg_sessions, oauth_states) are handled
-    // automatically by AtrgApp via with_db_pool().
-    sqlx::migrate!("./migrations")
-        .run(&pg_pool)
+    //
+    // Why a custom runner instead of `sqlx::migrate!()`?
+    // ---------------------------------------------------
+    // atrg-core runs its own internal SQLx migrations (atrg_sessions,
+    // oauth_states) during `AtrgApp::run()`.  Both migrators share the same
+    // Postgres database and the same `_sqlx_migrations` tracking table.
+    // When atrg's migrator sees changala's version numbers in that table it
+    // errors: "migration N was previously applied but is missing".
+    //
+    // sqlx 0.8 does not expose `set_migration_table_name`, so we run
+    // changala's migrations ourselves against a separate tracking table
+    // (`_changala_migrations`).  The migration directory lives at
+    // `changala_migrations/` (not `migrations/`) so atrg's automatic
+    // `run_user_migrations("./migrations")` call finds nothing to conflict
+    // with.
+    run_changala_migrations(&pg_pool)
         .await
-        .context("Failed to run migrations")?;
+        .context("Failed to run changala migrations")?;
     tracing::info!("applied changala migrations");
 
     // Initialize S3 blob store
@@ -113,4 +125,74 @@ async fn main() -> anyhow::Result<()> {
         .on_event(handlers::events::handle_event)
         .run()
         .await
+}
+
+/// Run changala's business-logic migrations using a private tracking table.
+///
+/// Migrations are embedded at compile time from `changala_migrations/` via
+/// the `sqlx::migrate!()` macro.  We record applied versions in
+/// `_changala_migrations` (not the default `_sqlx_migrations`) so that
+/// atrg-core's internal migrator never sees changala-specific entries.
+async fn run_changala_migrations(pool: &PgPool) -> anyhow::Result<()> {
+    // Ensure the tracking table exists.
+    sqlx::raw_sql(
+        "CREATE TABLE IF NOT EXISTS _changala_migrations (
+            version  BIGINT      PRIMARY KEY,
+            description TEXT     NOT NULL,
+            checksum BYTEA       NOT NULL,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )",
+    )
+    .execute(pool)
+    .await
+    .context("creating _changala_migrations table")?;
+
+    let migrator = sqlx::migrate!("./changala_migrations");
+
+    for migration in migrator.migrations.iter() {
+        let already_applied: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM _changala_migrations WHERE version = $1)",
+        )
+        .bind(migration.version)
+        .fetch_one(pool)
+        .await?;
+
+        if already_applied {
+            continue;
+        }
+
+        sqlx::raw_sql(migration.sql.as_ref())
+            .execute(pool)
+            .await
+            .with_context(|| {
+                format!(
+                    "migration {} ({})",
+                    migration.version, migration.description
+                )
+            })?;
+
+        sqlx::query(
+            "INSERT INTO _changala_migrations (version, description, checksum) \
+             VALUES ($1, $2, $3)",
+        )
+        .bind(migration.version)
+        .bind(migration.description.as_ref())
+        .bind(&*migration.checksum)
+        .execute(pool)
+        .await
+        .with_context(|| {
+            format!(
+                "recording migration {} ({})",
+                migration.version, migration.description
+            )
+        })?;
+
+        tracing::info!(
+            version = migration.version,
+            name = %migration.description,
+            "applied changala migration"
+        );
+    }
+
+    Ok(())
 }
