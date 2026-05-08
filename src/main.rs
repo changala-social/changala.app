@@ -25,30 +25,6 @@ struct ChangalaConfig {
     s3: blob::S3Config,
 }
 
-impl ChangalaConfig {
-    /// Apply environment variable overrides. Env vars take precedence.
-    fn apply_env_overrides(&mut self) {
-        if let Ok(v) = std::env::var("CHANGALA_DATABASE_URL") {
-            self.database_url = v;
-        }
-        if let Ok(v) = std::env::var("CHANGALA_S3_ENDPOINT") {
-            self.s3.endpoint = v;
-        }
-        if let Ok(v) = std::env::var("CHANGALA_S3_BUCKET") {
-            self.s3.bucket = v;
-        }
-        if let Ok(v) = std::env::var("CHANGALA_S3_REGION") {
-            self.s3.region = v;
-        }
-        if let Ok(v) = std::env::var("CHANGALA_S3_ACCESS_KEY") {
-            self.s3.access_key = v;
-        }
-        if let Ok(v) = std::env::var("CHANGALA_S3_SECRET_KEY") {
-            self.s3.secret_key = v;
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load changala-specific config from atrg.toml
@@ -61,9 +37,6 @@ async fn main() -> anyhow::Result<()> {
         .clone()
         .try_into()
         .context("Invalid [changala] config")?;
-
-    // Env vars override atrg.toml — for k8s Secrets, docker .env, etc.
-    config.apply_env_overrides();
 
     // Connect to PostgreSQL
     let pg_pool = PgPool::connect(&config.database_url)
