@@ -36,10 +36,14 @@ pub async fn create_node(
         .created_at
         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
-    let cid = app.blobs.put(input.content.as_bytes()).await.map_err(|e| XrpcError {
-        name: XrpcErrorName::InternalServerError,
-        message: format!("Failed to store content: {e}"),
-    })?;
+    let cid = app
+        .blobs
+        .put(input.content.as_bytes())
+        .await
+        .map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to store content: {e}"),
+        })?;
     let rkey = atrg_repo::Tid::now().to_string();
     let node_uri = format!("at://{}/app.changala.brain.node/{}", session.did, rkey);
 
@@ -125,10 +129,14 @@ pub async fn version_node(
     })?;
 
     let new_version = parent_version + 1;
-    let cid = app.blobs.put(input.content.as_bytes()).await.map_err(|e| XrpcError {
-        name: XrpcErrorName::InternalServerError,
-        message: format!("Failed to store content: {e}"),
-    })?;
+    let cid = app
+        .blobs
+        .put(input.content.as_bytes())
+        .await
+        .map_err(|e| XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("Failed to store content: {e}"),
+        })?;
     let rkey = atrg_repo::Tid::now().to_string();
     let node_uri = format!("at://{}/app.changala.brain.node/{}", author_did, rkey);
 
@@ -198,18 +206,20 @@ pub async fn get_node_content(
         message: format!("Blob not found: {e}"),
     })?;
     let content = String::from_utf8_lossy(&content_bytes).to_string();
-    let format = sqlx::query_scalar::<_, String>(
-        "SELECT format FROM brain_nodes WHERE cid = $1 LIMIT 1",
-    )
-    .bind(&params.cid)
-    .fetch_optional(&app.db)
-    .await
-    .map_err(|e| XrpcError {
-        name: XrpcErrorName::InternalServerError,
-        message: format!("DB error: {e}"),
-    })?
-    .unwrap_or_else(|| "markdown".to_string());
-    Ok(Json(AppChangalaRingGetNodeContentOutput { format, content }))
+    let format =
+        sqlx::query_scalar::<_, String>("SELECT format FROM brain_nodes WHERE cid = $1 LIMIT 1")
+            .bind(&params.cid)
+            .fetch_optional(&app.db)
+            .await
+            .map_err(|e| XrpcError {
+                name: XrpcErrorName::InternalServerError,
+                message: format!("DB error: {e}"),
+            })?
+            .unwrap_or_else(|| "markdown".to_string());
+    Ok(Json(AppChangalaRingGetNodeContentOutput {
+        format,
+        content,
+    }))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
