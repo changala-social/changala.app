@@ -386,9 +386,14 @@
               pkgs.tini
               pkgs.dockerTools.fakeNss # /etc/nsswitch.conf + passwd/group for glibc DNS
               pkgs.iana-etc # /etc/protocols + /etc/services for getprotobyname
+              # glibc NSS modules — dlopen'd at runtime by getaddrinfo().
+              # Without these, DNS resolution silently fails even with nsswitch.conf.
+              pkgs.glibc
+              # Debugging tools (remove in production once stable)
+              pkgs.busybox
             ];
             extraCommands = ''
-              mkdir -p app
+              mkdir -p app tmp
             '';
             config = {
               Entrypoint = [
