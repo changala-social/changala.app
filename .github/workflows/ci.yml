@@ -19,17 +19,8 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
-      # Generate code from lexicons
-      # atrg must be installed before cargo build since src/generated/ is gitignored.
-      # Option A: cargo install from source (uncomment and adjust if atrg is on crates.io or git)
-      # - name: Install atrg
-      #   run: nix develop --command cargo install --git https://github.com/tellmeY18/at-rust-go atrg
-      # - name: Generate types from lexicons
-      #   run: nix develop --command atrg generate
-
-      # Option B: If generated files are checked in (recommended for CI stability),
-      # skip the above and proceed directly to build.
-      # For now, we assume generated files exist (either checked in or from a prior step).
+      # src/generated/ is checked in — no atrg generate step needed.
+      # If lexicons change, run `atrg generate` locally and commit the result.
 
       - name: Check formatting
         run: nix develop --command cargo fmt --check

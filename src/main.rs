@@ -36,12 +36,18 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to connect to PostgreSQL")?;
     tracing::info!(url = %config.database_url, "connected to PostgreSQL");
 
-    // Run Postgres migrations
+    // Run Postgres migrations — business data tables
     sqlx::migrate!("./pg_migrations")
         .run(&pg_pool)
         .await
         .context("Failed to run Postgres migrations")?;
-    tracing::info!("applied Postgres migrations");
+
+    // Run atrg internal migrations (sessions, OAuth states) — same Postgres DB
+    sqlx::migrate!("./migrations")
+        .run(&pg_pool)
+        .await
+        .context("Failed to run atrg internal migrations")?;
+    tracing::info!("applied all migrations");
 
     // Initialize S3 blob store
     let blobs = blob::S3BlobStore::new(&config.s3).context("Failed to initialize S3 blob store")?;
@@ -53,9 +59,7 @@ async fn main() -> anyhow::Result<()> {
         blobs: Arc::new(blobs),
     });
 
-    // Start the atrg server
-    // atrg manages its own SQLite for internal tables (sessions, OAuth states)
-    // Changala's business data lives in Postgres
+    // Start the atrg server — single Postgres DB for everything
     AtrgApp::new()
         .with_auth_routes(atrg_auth::routes::auth_router())
         .with_cleanup_task(atrg_auth::routes::spawn_cleanup_task)

@@ -195,18 +195,32 @@
           ACCESS_KEY=$(echo "$KEY_INFO" | grep "Key ID" | awk '{print $NF}')
           SECRET_KEY=$(echo "$KEY_INFO" | grep "Secret key" | awk '{print $NF}')
 
+          # Persist credentials for changala-dev to pick up
+          cat > "$WORK_DIR/s3.env" <<ENVEOF
+          S3_ENDPOINT=http://127.0.0.1:$S3_PORT
+          S3_ACCESS_KEY=$ACCESS_KEY
+          S3_SECRET_KEY=$SECRET_KEY
+          S3_BUCKET=changala-blobs
+          S3_REGION=us-east-1
+          PG_PORT=$PG_PORT
+          ENVEOF
+
           echo ""
           echo "╔══════════════════════════════════════════════════════════════╗"
           echo "║             Changala Dev Services Running                   ║"
           echo "╠══════════════════════════════════════════════════════════════╣"
           echo "║                                                            ║"
           echo "║  PostgreSQL:                                               ║"
-          echo "║    URL: postgresql://changala@127.0.0.1:$PG_PORT/changala           ║"
+          echo "║    URL: postgres://changala@127.0.0.1:$PG_PORT/changala    ║"
           echo "║                                                            ║"
           echo "║  Garage S3:                                                ║"
-          echo "║    Endpoint:   http://127.0.0.1:$S3_PORT                        ║"
+          echo "║    Endpoint:   http://127.0.0.1:$S3_PORT                   ║"
           echo "║    Access Key: $ACCESS_KEY"
           echo "║    Secret Key: $SECRET_KEY"
+          echo "║    Bucket:     changala-blobs                              ║"
+          echo "║                                                            ║"
+          echo "║  Credentials saved to /tmp/changala-dev/s3.env             ║"
+          echo "║  Run  changala-dev  to start the server with auto-config.  ║"
           echo "║                                                            ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
         '';
@@ -243,6 +257,94 @@
           echo "  Done."
         '';
 
+        changala-dev = pkgs.writeShellScriptBin "changala-dev" ''
+                    set -euo pipefail
+                    export PATH="${serviceBinPath}:$PATH"
+
+                    WORK_DIR="/tmp/changala-dev"
+                    PROJECT_DIR="$(pwd)"
+
+                    # ── 1. Start services if not running ────────────────────────
+                    if ! pg_isready -h 127.0.0.1 -p "''${CHANGALA_PG_PORT:-5432}" -q 2>/dev/null; then
+                      echo "==> Services not running, starting them..."
+                      ${changala-services-start}/bin/changala-services-start
+                    else
+                      echo "==> Services already running."
+                    fi
+
+                    # ── 2. Read Garage creds ────────────────────────────────────
+                    if [ ! -f "$WORK_DIR/s3.env" ]; then
+                      echo "ERROR: $WORK_DIR/s3.env not found. Run changala-services-start first."
+                      exit 1
+                    fi
+
+                    # Source the saved credentials (strips leading whitespace from heredoc)
+                    eval "$(sed 's/^[[:space:]]*//' "$WORK_DIR/s3.env")"
+
+                    # ── 3. Generate atrg.toml with live creds ───────────────────
+                    if [ -f "$PROJECT_DIR/atrg.toml" ] && [ ! -f "$WORK_DIR/atrg.toml.bak" ]; then
+                      cp "$PROJECT_DIR/atrg.toml" "$WORK_DIR/atrg.toml.bak"
+                      echo "==> Backed up atrg.toml → /tmp/changala-dev/atrg.toml.bak"
+                    fi
+
+                    cat > "$PROJECT_DIR/atrg.toml" <<TOMLEOF
+          [app]
+          name = "changala"
+          host = "127.0.0.1"
+          port = 3000
+          secret_key = "5d35c20908906d926e1804c21a664dc744e8a25f49fd3121f10dc3baad462e2c"
+          cors_origins = ["http://localhost:5173"]
+          environment = "development"
+
+          [auth]
+          client_id = "http://localhost:3000/client-metadata.json"
+          redirect_uri = "http://localhost:3000/auth/callback"
+          scope = "atproto transition:generic"
+
+          [database]
+          url = "postgres://changala@127.0.0.1:$PG_PORT/changala"
+
+          [jetstream]
+          host = "jetstream1.us-east.bsky.network"
+          collections = [
+              "app.changala.membership",
+              "app.changala.keyword",
+              "app.changala.note",
+              "app.changala.vote",
+              "app.changala.collectivenote.proposal",
+              "app.changala.label",
+              "app.changala.brain.node",
+              "app.changala.brain.link",
+          ]
+
+          [changala]
+          database_url = "postgres://changala@127.0.0.1:$PG_PORT/changala"
+
+          [changala.s3]
+          endpoint = "$S3_ENDPOINT"
+          bucket = "$S3_BUCKET"
+          region = "$S3_REGION"
+          access_key = "$S3_ACCESS_KEY"
+          secret_key = "$S3_SECRET_KEY"
+          path_style = true
+          TOMLEOF
+
+                    echo "==> atrg.toml updated with live PG + Garage credentials"
+
+                    # ── 4. Build if needed ──────────────────────────────────────
+                    if [ ! -f "$PROJECT_DIR/target/debug/changala" ] && [ ! -f "$PROJECT_DIR/target/release/changala" ]; then
+                      echo "==> Building changala..."
+                      cargo build
+                    fi
+
+                    # ── 5. Run the server ───────────────────────────────────────
+                    echo ""
+                    echo "==> Starting changala on http://127.0.0.1:3000"
+                    echo "    Press Ctrl-C to stop the server."
+                    echo ""
+                    cargo run
+        '';
+
         changala-services-clean = pkgs.writeShellScriptBin "changala-services-clean" ''
           export PATH="${serviceBinPath}:$PATH"
 
@@ -271,6 +373,7 @@
             changala-services-start
             changala-services-stop
             changala-services-clean
+            changala-dev
             ;
         };
 
@@ -297,6 +400,9 @@
           };
           changala-services-clean = flake-utils.lib.mkApp {
             drv = changala-services-clean;
+          };
+          changala-dev = flake-utils.lib.mkApp {
+            drv = changala-dev;
           };
         };
 
@@ -333,9 +439,10 @@
             echo "╠══════════════════════════════════════════════════════════════╣"
             echo "║                                                            ║"
             echo "║  Commands:                                                 ║"
-            echo "║    changala-services-start   Start PG + Garage             ║"
-            echo "║    changala-services-stop    Stop all services             ║"
-            echo "║    changala-services-clean   Stop + wipe /tmp/changala-dev ║"
+            echo "║    changala-dev              Start everything (one cmd)   ║"
+            echo "║    changala-services-start   Start PG + Garage only        ║"
+            echo "║    changala-services-stop    Stop all services              ║"
+            echo "║    changala-services-clean   Stop + wipe /tmp/changala-dev  ║"
             echo "║                                                            ║"
             echo "║  Environment:                                              ║"
             echo "║    CHANGALA_PG_PORT  PostgreSQL port (default: 5432)       ║"
@@ -343,7 +450,7 @@
             echo "║                                                            ║"
             echo "╚══════════════════════════════════════════════════════════════╝"
             echo ""
-            export PATH="${changala-services-start}/bin:${changala-services-stop}/bin:${changala-services-clean}/bin:$PATH"
+            export PATH="${changala-dev}/bin:${changala-services-start}/bin:${changala-services-stop}/bin:${changala-services-clean}/bin:$PATH"
           '';
         };
       }

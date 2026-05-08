@@ -4,8 +4,8 @@ CREATE TABLE IF NOT EXISTS atrg_oauth_states (
     pkce_verifier TEXT NOT NULL,
     nonce         TEXT NOT NULL,
     handle        TEXT NOT NULL,
-    created_at    INTEGER NOT NULL DEFAULT (unixepoch()),
-    expires_at    INTEGER NOT NULL
+    created_at    BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+    expires_at    BIGINT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_atrg_oauth_states_expires_at ON atrg_oauth_states(expires_at);

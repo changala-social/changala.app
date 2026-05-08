@@ -5,9 +5,9 @@ CREATE TABLE IF NOT EXISTS atrg_sessions (
     handle        TEXT NOT NULL,
     access_token  TEXT NOT NULL,
     refresh_token TEXT,
-    expires_at    INTEGER NOT NULL,
-    created_at    INTEGER NOT NULL DEFAULT (unixepoch()),
-    last_used_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    expires_at    BIGINT NOT NULL,
+    created_at    BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+    last_used_at  BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
 );
 
 CREATE INDEX IF NOT EXISTS idx_atrg_sessions_did ON atrg_sessions(did);

@@ -4,5 +4,4 @@
 *.db-wal
 *.db-shm
 .env
-src/generated/
-.direnv/*
+.direnv/

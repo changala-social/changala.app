@@ -12,7 +12,7 @@ redirect_uri = "http://localhost:3000/auth/callback"
 scope = "atproto transition:generic"
 
 [database]
-url = "sqlite://changala.db"
+url = "postgres://changala@127.0.0.1:5432/changala"
 
 [jetstream]
 host = "jetstream1.us-east.bsky.network"
@@ -24,28 +24,16 @@ collections = [
     "app.changala.collectivenote.proposal",
     "app.changala.label",
     "app.changala.brain.node",
-    "app.changala.brain.link"
+    "app.changala.brain.link",
 ]
 
-# [firehose]
-# relay = "wss://bsky.network"
-
-# [rate_limit]
-# requests_per_second = 10.0
-# burst = 50
-# enabled = true
-
-# ─── Changala-specific configuration ──────────────────────
-# These settings are loaded by Changala's own init code,
-# NOT by the atrg framework.
-
 [changala]
-database_url = "postgres://changala:changala@localhost:5432/changala"
+database_url = "postgres://changala@127.0.0.1:5432/changala"
 
 [changala.s3]
-endpoint = "http://localhost:9000"
+endpoint = "http://127.0.0.1:9000"
 bucket = "changala-blobs"
 region = "us-east-1"
-access_key = "minioadmin"
-secret_key = "minioadmin"
+access_key = ""
+secret_key = ""
 path_style = true
