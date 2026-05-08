@@ -47,7 +47,7 @@ pub async fn search_notes(
     let mut param_idx = 2;
     let mut sql = String::from(
         "SELECT n.uri, n.session_uri, n.author_did, n.format, n.ring_did, n.cid, \
-                n.version, n.summary, n.created_at, \
+                n.version::BIGINT, n.summary, n.created_at, \
                 COALESCE(v.cnt, 0) as vote_count \
          FROM notes n \
          JOIN sessions s ON n.session_uri = s.uri \
@@ -312,7 +312,7 @@ pub async fn search_archive(
     let mut param_idx = 3;
     let mut sql = String::from(
         "SELECT a.archive_uri, a.course_uri, c.title as course_title, a.semester, \
-                a.session_count, a.internet_archive_url, a.sealed_at \
+                a.session_count::BIGINT, a.internet_archive_url, a.sealed_at \
          FROM archives a \
          JOIN courses c ON a.course_uri = c.uri \
          WHERE a.status = 'sealed' AND (c.title ILIKE $1 OR c.code ILIKE $2)",

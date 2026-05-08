@@ -190,7 +190,7 @@ pub async fn version_note(
 
     // Fetch the parent note to inherit session + author and get current version.
     let parent = sqlx::query_as::<_, (String, String, i64)>(
-        "SELECT session_uri, author_did, version FROM notes WHERE uri = $1",
+        "SELECT session_uri, author_did, version::BIGINT FROM notes WHERE uri = $1",
     )
     .bind(&input.parent_note_uri)
     .fetch_optional(&app.db)
@@ -330,7 +330,7 @@ pub async fn get_note_history(
             String,
         ),
     >(
-        "SELECT uri, ring_did, cid, version, parent_note_uri, summary, created_at \
+        "SELECT uri, ring_did, cid, version::BIGINT, parent_note_uri, summary, created_at \
          FROM notes \
          WHERE session_uri = $1 AND author_did = $2 \
          ORDER BY version ASC",
@@ -496,15 +496,16 @@ pub async fn accept_edit(
         })?;
 
     // Try to fetch existing collective note to get current version.
-    let existing_version =
-        sqlx::query_scalar::<_, i64>("SELECT version FROM collective_notes WHERE session_uri = $1")
-            .bind(&session_uri)
-            .fetch_optional(&app.db)
-            .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("Collective note lookup failed: {e}"),
-            })?;
+    let existing_version = sqlx::query_scalar::<_, i64>(
+        "SELECT version::BIGINT FROM collective_notes WHERE session_uri = $1",
+    )
+    .bind(&session_uri)
+    .fetch_optional(&app.db)
+    .await
+    .map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Collective note lookup failed: {e}"),
+    })?;
 
     let new_version = existing_version.unwrap_or(0) + 1;
 
@@ -609,7 +610,7 @@ pub async fn get_collective_note(
     let app = crate::state::get();
 
     let row = sqlx::query_as::<_, (String, String, i64, String)>(
-        "SELECT ring_did, cid, version, updated_at FROM collective_notes WHERE session_uri = $1",
+        "SELECT ring_did, cid, version::BIGINT, updated_at FROM collective_notes WHERE session_uri = $1",
     )
     .bind(&params.session_uri)
     .fetch_optional(&app.db)

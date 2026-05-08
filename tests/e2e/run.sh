@@ -40,7 +40,7 @@ run_test() {
   fi
 
   local http_code
-  http_code=$(curl "${curl_args[@]}" "$url" 2>/dev/null || echo "000")
+  http_code=$(curl "${curl_args[@]}" "$url" 2>/dev/null) || http_code="000"
 
   if [ "$http_code" = "$expected" ]; then
     echo -e "  ${GREEN}✅ PASS${RESET}  $name (HTTP $http_code)"
@@ -70,7 +70,7 @@ run_test_body() {
   fi
 
   local http_code
-  http_code=$(curl "${curl_args[@]}" "$url" 2>/dev/null || echo "000")
+  http_code=$(curl "${curl_args[@]}" "$url" 2>/dev/null) || http_code="000"
 
   if [ "$http_code" != "$expected_code" ]; then
     echo -e "  ${RED}❌ FAIL${RESET}  $name (expected HTTP $expected_code, got $http_code)"

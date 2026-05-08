@@ -134,7 +134,7 @@ pub async fn seal_archive(
 
     // Validate the archive exists with status 'initiated'.
     let archive = sqlx::query_as::<_, (i64, i64)>(
-        "SELECT session_count, note_count FROM archives \
+        "SELECT session_count::BIGINT, note_count::BIGINT FROM archives \
          WHERE course_uri = $1 AND semester = $2 AND status = 'initiated'",
     )
     .bind(&input.course_uri)
@@ -368,7 +368,7 @@ pub async fn get_archive(
         ),
     >(
         "SELECT archive_uri, course_uri, semester, sealed_by, ring_did, cid, \
-                internet_archive_url, session_count, note_count, status, \
+                internet_archive_url, session_count::BIGINT, note_count::BIGINT, status, \
                 initiated_at, sealed_at \
          FROM archives \
          WHERE course_uri = $1 AND semester = $2",

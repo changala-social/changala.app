@@ -53,7 +53,7 @@ pub async fn get_notes(
     let fetch_limit = limit + 1;
 
     let mut sql = "SELECT n.uri, n.session_uri, n.author_did, n.format, n.ring_did, n.cid, \
-                n.version, n.summary, n.created_at, \
+                n.version::BIGINT, n.summary, n.created_at, \
                 COALESCE(v.cnt, 0) as vote_count \
          FROM notes n \
          LEFT JOIN (SELECT subject_uri, COUNT(*) as cnt FROM votes GROUP BY subject_uri) v \
@@ -746,7 +746,7 @@ pub async fn get_global_archive_feed(
 
     let mut sql = String::from(
         "SELECT a.archive_uri, a.course_uri, c.title as course_title, a.semester, \
-                a.session_count, a.internet_archive_url, a.sealed_at \
+                a.session_count::BIGINT, a.internet_archive_url, a.sealed_at \
          FROM archives a \
          JOIN courses c ON a.course_uri = c.uri \
          WHERE a.status = 'sealed'",
