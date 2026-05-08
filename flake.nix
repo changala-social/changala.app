@@ -302,7 +302,7 @@
           scope = "atproto transition:generic"
 
           [database]
-          url = "postgres://changala@127.0.0.1:$PG_PORT/changala"
+          url = "sqlite://atrg.db"
 
           [jetstream]
           host = "jetstream1.us-east.bsky.network"

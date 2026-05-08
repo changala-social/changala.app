@@ -23,8 +23,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 
-# Database — Postgres only
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "migrate"] }
+# Database — Postgres for business data, SQLite for atrg framework internals
+sqlx = { version = "0.8", features = ["sqlite", "postgres", "runtime-tokio", "migrate"] }
 
 # Blob storage (S3-compatible — RustFS, MinIO, AWS S3)
 rust-s3 = "0.35"
