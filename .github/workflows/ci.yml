@@ -19,9 +19,33 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
+      # ── Caching ──────────────────────────────────────────────
+      - name: Cache Nix store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/nix
+            /nix/store
+          key: nix-ci-${{ hashFiles('flake.lock', 'flake.nix') }}
+          restore-keys: |
+            nix-ci-
+
+      - name: Cache Cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-ci-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-ci-
+
       # src/generated/ is checked in — no atrg generate step needed.
       # If lexicons change, run `atrg generate` locally and commit the result.
 
+      # ── Checks ───────────────────────────────────────────────
       - name: Check formatting
         run: nix develop --command cargo fmt --check
 
@@ -38,3 +62,28 @@ jobs:
         run: |
           chmod +x tests/e2e/run.sh
           nix develop --command bash tests/e2e/run.sh
+
+  # ── Web frontend ───────────────────────────────────────────
+  web:
+    name: Web — Lint & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
