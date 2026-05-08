@@ -1,6 +1,6 @@
 [package]
 name = "changala"
-version = "0.1.0"
+version = "0.1.9"
 edition = "2021"
 description = "Federated social learning platform and student knowledge graph on AT Protocol"
 
