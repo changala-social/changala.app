@@ -31,6 +31,9 @@ jobs:
       - name: Unit tests
         run: nix develop --command cargo test
 
+      - name: Build
+        run: nix develop --command cargo build
+
       - name: E2E tests
         run: |
           chmod +x tests/e2e/run.sh
