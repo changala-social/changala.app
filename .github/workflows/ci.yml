@@ -28,12 +28,6 @@ jobs:
       - name: Clippy
         run: nix develop --command cargo clippy --all-targets -- -D warnings
 
-      - name: Build (debug)
-        run: nix develop --command cargo build
-
-      - name: Build (release)
-        run: nix develop --command cargo build --release
-
       - name: Unit tests
         run: nix develop --command cargo test
 
