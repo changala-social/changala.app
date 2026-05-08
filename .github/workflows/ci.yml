@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      # Generate code from lexicons
+      # atrg must be installed before cargo build since src/generated/ is gitignored.
+      # Option A: cargo install from source (uncomment and adjust if atrg is on crates.io or git)
+      # - name: Install atrg
+      #   run: nix develop --command cargo install --git https://github.com/tellmeY18/at-rust-go atrg
+      # - name: Generate types from lexicons
+      #   run: nix develop --command atrg generate
+
+      # Option B: If generated files are checked in (recommended for CI stability),
+      # skip the above and proceed directly to build.
+      # For now, we assume generated files exist (either checked in or from a prior step).
+
+      - name: Check formatting
+        run: nix develop --command cargo fmt --check
+
+      - name: Clippy
+        run: nix develop --command cargo clippy --all-targets -- -D warnings
+
+      - name: Build (debug)
+        run: nix develop --command cargo build
+
+      - name: Build (release)
+        run: nix develop --command cargo build --release
+
+      - name: Unit tests
+        run: nix develop --command cargo test
+
+      - name: E2E tests
+        run: |
+          chmod +x tests/e2e/run.sh
+          nix develop --command bash tests/e2e/run.sh
