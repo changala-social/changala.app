@@ -375,6 +375,35 @@
             changala-services-clean
             changala-dev
             ;
+        }
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          docker-image = pkgs.dockerTools.buildLayeredImage {
+            name = "ghcr.io/changala-social/changala.app";
+            tag = "latest";
+            contents = [
+              changala
+              pkgs.cacert
+              pkgs.tini
+            ];
+            extraCommands = ''
+              mkdir -p app
+            '';
+            config = {
+              Entrypoint = [
+                "${pkgs.tini}/bin/tini"
+                "--"
+              ];
+              Cmd = [ "${changala}/bin/changala" ];
+              ExposedPorts = {
+                "3000/tcp" = { };
+              };
+              WorkingDir = "/app";
+              Env = [
+                "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+                "RUST_LOG=info"
+              ];
+            };
+          };
         };
 
         checks = {

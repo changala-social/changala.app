@@ -14,19 +14,19 @@ permissions:
   packages: write
 
 jobs:
-  # ── Build native binaries ──────────────────────────────────
+  # ── Build image + binary per arch ──────────────────────────
   build:
-    name: Build — ${{ matrix.artifact }}
+    name: Build — ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            arch: amd64
             artifact: changala-linux-amd64
           - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
+            arch: arm64
             artifact: changala-linux-arm64
 
     steps:
@@ -34,35 +34,52 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
-      - name: Build release binary
-        run: nix develop --command cargo build --release
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Package binary
+      - name: Build Docker image (nix)
+        run: nix build .#docker-image --print-build-logs
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load and push platform image
+        run: |
+          docker load < result
+          REPO="ghcr.io/${{ github.repository }}"
+          TAG="${{ steps.tag.outputs.tag }}"
+          docker tag "$REPO:latest" "$REPO:$TAG-${{ matrix.arch }}"
+          docker push "$REPO:$TAG-${{ matrix.arch }}"
+
+      - name: Extract binary for release
         run: |
           mkdir -p dist
-          cp target/release/changala dist/${{ matrix.artifact }}
+          BIN_PATH=$(nix build .#changala --no-link --print-out-paths)
+          cp "$BIN_PATH/bin/changala" dist/${{ matrix.artifact }}
           chmod +x dist/${{ matrix.artifact }}
 
-      - name: Upload artifact
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}
 
-  # ── Container image (multi-arch) ───────────────────────────
-  image:
-    name: Container Image
+  # ── Multi-arch manifest ────────────────────────────────────
+  manifest:
+    name: Multi-arch Manifest
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Linux binaries
-        uses: actions/download-artifact@v4
-        with:
-          pattern: changala-linux-*
-          path: artifacts
-
       - name: Determine tag
         id: tag
         run: |
@@ -82,34 +99,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare binaries for multi-arch build
+      - name: Create and push multi-arch manifest
         run: |
-          mkdir -p build/linux-amd64 build/linux-arm64
-          cp artifacts/changala-linux-amd64/changala-linux-amd64 build/linux-amd64/changala
-          cp artifacts/changala-linux-arm64/changala-linux-arm64 build/linux-arm64/changala
-          chmod +x build/linux-amd64/changala build/linux-arm64/changala
-
-      - name: Build and push multi-arch image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.tag }}
-            ghcr.io/${{ github.repository }}:latest
-          labels: |
-            org.opencontainers.image.title=changala
-            org.opencontainers.image.description=Federated social learning platform on AT Protocol
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.version=${{ steps.tag.outputs.tag }}
-            org.opencontainers.image.revision=${{ github.sha }}
+          REPO="ghcr.io/${{ github.repository }}"
+          TAG="${{ steps.tag.outputs.tag }}"
+          docker buildx imagetools create \
+            -t "$REPO:$TAG" \
+            -t "$REPO:latest" \
+            "$REPO:$TAG-amd64" \
+            "$REPO:$TAG-arm64"
 
   # ── GitHub Release ─────────────────────────────────────────
   release:
     name: GitHub Release
-    needs: [build, image]
+    needs: [build, manifest]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
