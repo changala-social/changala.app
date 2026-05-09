@@ -8,7 +8,8 @@
 
 ## Architecture Overview
 
-Changala has **two layers** and **three runtime components**.
+Changala has **two layers**, **three runtime components**, and ships as
+**two binaries** from one monorepo.
 
 ### Layers
 
@@ -19,11 +20,11 @@ Changala has **two layers** and **three runtime components**.
 
 ### Components
 
-| Component | Role |
-|---|---|
-| **Ring** | Content server for heavy blobs (LaTeX, PDFs, markdown). One per institution. |
-| **Global View** | Read-layer aggregator subscribing to the ATProto firehose via Jetstream. |
-| **API Gateway** | Axum-based XRPC handlers generated from lexicon JSON by `atrg generate`. |
+| Component | Binary | Deployed by | Role |
+|---|---|---|---|
+| **Ring** | `changala-ring` | Each institution | Write server: identity, OAuth, courses, sessions, notes, brain CRUD, blob storage, moderation, archives |
+| **Aggregator** | `changala-aggregator` | `changala.app` (canonical) | Read-only: firehose subscriber, feeds, search, graph index, notifications, cross-institution aggregation |
+| **Frontend** | Static (CF Pages) | `changala-app.pages.dev` | React SPA. Reads from Aggregator, writes to Ring. No per-institution UI — shared frontend for all. |
 
 ---
 
@@ -401,13 +402,229 @@ Support for MCP
 
 ---
 
-## Phase 9: Federation (Post-MVP)
+## Phase 9: Binary Split & Federation Architecture 🚨 CRITICAL
 
-- [ ] Multiple Ring instances (one per institution)
-- [ ] Cross-Ring content discovery via Global View aggregation
-- [ ] Global View subscribing to firehose from multiple Rings
-- [ ] DNS-based institution handle verification (`did:web`)
-- [ ] Instance admin federation config (allow/deny lists for cross-instance interaction)
+> **This is not post-MVP. This must happen NOW, before more features land.**
+> The Ring and Global View (Aggregator) must be separate binaries from the same
+> monorepo. Waiting until after MVP makes the split exponentially harder as
+> handler code, state, and migrations intertwine further.
+
+### 9.1 Why Split Now
+
+The current codebase ships a **single binary** that serves both Ring endpoints
+(`app.changala.ring.*`) and Global View endpoints (`app.changala.globalview.*`)
+from the same Axum router, sharing the same Postgres database and state.
+
+This is architecturally wrong for federation:
+
+- **Ring** = per-institution, deployed by each college. Handles writes,
+  identity, blob storage, OAuth. Each institution runs their own.
+- **Global View (Aggregator)** = one canonical instance at `changala.app`.
+  Subscribes to firehoses from ALL Rings, materialises feeds, search indexes,
+  brain graph, notifications. Read-only.
+- **Frontend** = static SPA on CF Pages. Talks to the **Aggregator only**.
+  Institutions deploying Rings don't get a dedicated UI — they connect
+  to the shared frontend at `changala-app.pages.dev`.
+
+If we keep them merged, every new Ring feature bleeds into the Aggregator
+binary, migrations conflict, and splitting later means rewriting the entire
+state layer.
+
+### 9.2 Target Architecture
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  changala/ monorepo                                           │
+│                                                                │
+│  ┌────────────────────┐  ┌────────────────────┐  ┌──────────────┐  │
+│  │   changala-ring    │  │ changala-aggregator│  │    web/      │  │
+│  │   (binary 1)      │  │   (binary 2)      │  │  (static)   │  │
+│  │                    │  │                    │  │              │  │
+│  │ • Identity/auth   │  │ • Firehose sub    │  │ • React SPA  │  │
+│  │ • Course/session  │  │ • Feeds/search   │  │ • Talks to   │  │
+│  │ • Notes/keywords │  │ • Graph index    │  │   Aggregator │  │
+│  │ • Brain CRUD     │  │ • Notifications  │  │   only       │  │
+│  │ • Blob storage   │  │ • Histograms     │  │              │  │
+│  │ • Moderation     │  │ • Multi-Ring     │  │ • Writes go  │  │
+│  │ • Archive        │  │   aggregation   │  │   to Ring    │  │
+│  │                    │  │                    │  │   via XRPC   │  │
+│  │ Deployed by:     │  │ Deployed by:     │  │              │  │
+│  │ each institution │  │ changala.app     │  │ CF Pages     │  │
+│  └────────┬───────────┘  └────────┬───────────┘  └──────┬───────┘  │
+│           │                     │                   │           │
+│           └───── ATProto ─────┘                   │           │
+│                Firehose                      XRPC calls    │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### 9.3 Frontend Routing
+
+The frontend (`web/`) is the UI for the **Aggregator**. It is NOT deployed
+per-institution. Institutions deploy Rings (headless API servers).
+
+| Frontend URL | Talks to | Purpose |
+|---|---|---|
+| `changala-app.pages.dev` | Aggregator | Public browsing, brain layer, search, graph |
+| `changala-app.pages.dev/login` | Ring (via Aggregator proxy or direct) | AT Protocol OAuth |
+| `changala-app.pages.dev/dashboard` | Aggregator + Ring | Dashboard, email verification |
+| `changala-app.pages.dev/admin` | Ring (direct) | Institution admin panel |
+
+For writes (create note, enroll, add keyword), the frontend calls the
+user's **Ring** directly (identified by institution membership). The
+Aggregator never handles writes — it’s read-only.
+
+### 9.4 Monorepo Structure (Target)
+
+```
+changala/
+├── Cargo.toml              ← workspace root
+├── crates/
+│   ├── changala-ring/      ← binary 1: Ring server
+│   │   ├── Cargo.toml
+│   │   ├── src/
+│   │   │   ├── main.rs
+│   │   │   ├── handlers/   ← identity, course, session, note, brain, archive, moderation, admin
+│   │   │   ├── blob.rs
+│   │   │   ├── email.rs
+│   │   │   └── state.rs
+│   │   └── ring_migrations/
+│   ├── changala-aggregator/ ← binary 2: Global View / Aggregator
+│   │   ├── Cargo.toml
+│   │   ├── src/
+│   │   │   ├── main.rs
+│   │   │   ├── handlers/   ← feed, search, graph, notification, histogram
+│   │   │   ├── firehose.rs ← Jetstream subscriber + event processor
+│   │   │   └── state.rs
+│   │   └── aggregator_migrations/
+│   ├── changala-shared/     ← shared library crate
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── types.rs    ← generated types (shared between Ring + Aggregator)
+│   │       └── lib.rs
+│   └── changala-e2e/        ← integration tests
+├── web/                     ← frontend (talks to Aggregator)
+├── deploy/
+│   ├── ring.Dockerfile
+│   ├── aggregator.Dockerfile
+│   └── docker-compose.yml
+└── lexicons/
+```
+
+### 9.5 Split Plan
+
+#### Step 1: Cargo workspace
+
+- [ ] Convert repo to Cargo workspace with `crates/` directory
+- [ ] Create `changala-shared` crate for generated types + common helpers
+- [ ] Move current `src/generated/` to `changala-shared`
+
+#### Step 2: Extract Ring binary
+
+- [ ] Create `changala-ring` crate
+- [ ] Move Ring handlers: `identity`, `course`, `session`, `note`, `brain`,
+      `archive`, `moderation`, `admin`
+- [ ] Move Ring-specific state: `blob.rs`, `email.rs`
+- [ ] Move Ring migrations to `ring_migrations/`
+- [ ] Ring has its own `atrg.toml`, Postgres, S3
+- [ ] Ring does NOT subscribe to Jetstream — it’s a write server
+
+#### Step 3: Extract Aggregator binary
+
+- [ ] Create `changala-aggregator` crate
+- [ ] Move GlobalView handlers: `feed`, `search`, `graph`, `notification`
+- [ ] Move Jetstream subscriber (`events.rs`) to Aggregator
+- [ ] Move Aggregator migrations to `aggregator_migrations/`
+  - Materialised views: keyword histograms, vote counts, brain graph index
+  - Notification table
+  - Search indexes
+- [ ] Aggregator has its own `atrg.toml`, Postgres (no S3 needed)
+- [ ] Aggregator subscribes to firehose from one or more Rings
+
+#### Step 4: Frontend re-wiring
+
+- [ ] `VITE_RING_URL` → points to the user’s Ring (derived from institution membership)
+- [ ] `VITE_AGGREGATOR_URL` → points to `changala.app` (the canonical Aggregator)
+- [ ] XRPC client routes `app.changala.ring.*` → Ring URL
+- [ ] XRPC client routes `app.changala.globalview.*` → Aggregator URL
+- [ ] This already works — `xrpc.ts` uses `getBaseUrl(nsid)` to split by namespace
+
+#### Step 5: Multi-Ring Aggregation
+
+- [ ] Aggregator config: list of Ring firehose URLs to subscribe to
+- [ ] Aggregator stores `institution_did` / `ring_did` on every materialised record
+- [ ] Feed/search responses include `institutionDid` for filtering
+- [ ] Frontend institution selector / filter
+
+#### Step 6: Separate Docker images + CI
+
+- [ ] `ring.Dockerfile` → `ghcr.io/changala-social/changala-ring`
+- [ ] `aggregator.Dockerfile` → `ghcr.io/changala-social/changala-aggregator`
+- [ ] Release workflow builds both images
+- [ ] Separate Helm charts / k8s manifests for Ring vs Aggregator
+
+### 9.6 Data Flow After Split
+
+```
+Institution A (NITC)           Institution B (IITB)
+┌──────────────────┐          ┌──────────────────┐
+│  Ring (NITC)     │          │  Ring (IITB)     │
+│  nitc.changala   │          │  iitb.changala   │
+│                  │          │                  │
+│ Postgres + S3    │          │ Postgres + S3    │
+│ OAuth + identity │          │ OAuth + identity │
+│ Courses/sessions │          │ Courses/sessions │
+│ Notes/brain CRUD │          │ Notes/brain CRUD │
+└────────┬─────────┘          └────────┬─────────┘
+         │  ATProto firehose        │
+         └────────┬───────────────┘
+                  │
+         ┌────────┴─────────┐
+         │  Aggregator       │
+         │  changala.app     │
+         │                   │
+         │ Feeds + Search    │
+         │ Graph index       │
+         │ Notifications     │
+         │ Cross-institution │
+         │ browsing          │
+         └────────┬──────────┘
+                  │  XRPC
+         ┌────────┴─────────┐
+         │  Frontend         │
+         │  CF Pages          │
+         │  (reads → Aggregator)│
+         │  (writes → Ring)  │
+         └──────────────────┘
+```
+
+### 9.7 What’s Already Split-Ready
+
+| Item | Status |
+|---|---|
+| XRPC namespaces (`ring.*` vs `globalview.*`) | ✅ Clean separation |
+| Frontend XRPC routing (`getBaseUrl(nsid)`) | ✅ Already splits by namespace |
+| Handler modules (ring handlers vs feed/search/graph) | ✅ Separate files |
+| Generated types | ✅ Can be extracted to shared crate |
+| Jetstream event handler | ✅ Already in `events.rs`, only Aggregator needs it |
+| Migrations | ⚠️ Currently shared — need to split |
+| State (`Changala` struct) | ⚠️ Currently shared — Ring needs blob+smtp, Aggregator doesn’t |
+| `main.rs` | ❌ Single binary — must split |
+
+### 9.8 Why the Frontend Only Needs the Aggregator
+
+The frontend is a **public browsing + social interaction** surface. Its primary
+data source is the Aggregator (feeds, search, graph, notifications). Writes go
+to the Ring, but the Ring URL is derived from the user’s institution membership
+— the frontend already knows which Ring to talk to via `VITE_RING_URL`.
+
+Institutions deploying a Ring get:
+- A headless XRPC API server
+- Content storage (Postgres + S3)
+- OAuth + identity management
+- Firehose publishing for the Aggregator to consume
+
+They do NOT get a dedicated UI. Their users access the shared frontend at
+`changala-app.pages.dev` (or `changala.app` post-launch).
 
 ---
 
@@ -426,7 +643,7 @@ Support for MCP
 
 | Item | Rationale |
 |---|---|
-| UI / UX | API-first. Bring your own frontend. |
+| Per-institution frontend | Institutions deploy Rings (headless API). All users share the canonical frontend at `changala-app.pages.dev`. |
 | Private brain nodes | Openness is the point. If you don't want it public, don't put it on Changala. |
 | Wikipedia integration | Changala archive is the canonical source. |
 | PDS implementation | atrg builds ON TOP of the AT Protocol network. Users bring their own PDS. |
