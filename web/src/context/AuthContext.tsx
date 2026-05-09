@@ -1,5 +1,17 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
-import { storeAuth, clearAuth, getStoredToken, getStoredDid, getStoredHandle } from '../lib/auth';
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
+import {
+  storeAuth,
+  clearAuth,
+  getStoredToken,
+  getStoredDid,
+  getStoredHandle,
+} from "../lib/auth";
 
 interface AuthState {
   token: string | null;
@@ -33,14 +45,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...auth, isAuthenticated: !!auth.token, login, logout }}>
+    <AuthContext.Provider
+      value={{ ...auth, isAuthenticated: !!auth.token, login, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }

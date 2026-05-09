@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useSearchCourses } from "../hooks/useCourses";
 import { useSearchNotes } from "../hooks/useNotes";
@@ -41,32 +41,30 @@ export default function SearchPage() {
   const [accNotes, setAccNotes] = useState<Note[]>([]);
   const [accNodes, setAccNodes] = useState<BrainNode[]>([]);
 
-  // Reset tab when mode changes and current tab is no longer visible
-  useEffect(() => {
-    if (!visibleTabs.includes(activeTab)) {
-      setActiveTab(visibleTabs[0]);
-    }
-  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ensure activeTab is valid when mode changes
+  const effectiveTab = visibleTabs.includes(activeTab)
+    ? activeTab
+    : visibleTabs[0];
 
   const courseResult = useSearchCourses(
-    activeTab === "courses" ? query : "",
-    activeTab === "courses" ? cursor : undefined,
+    effectiveTab === "courses" ? query : "",
+    effectiveTab === "courses" ? cursor : undefined,
   );
   const noteResult = useSearchNotes(
-    activeTab === "notes" ? query : "",
-    activeTab === "notes" ? cursor : undefined,
+    effectiveTab === "notes" ? query : "",
+    effectiveTab === "notes" ? cursor : undefined,
   );
-  const brainResult = useSearchBrainNodes(
-    activeTab === "brain" ? query : "",
-    activeTab === "brain" ? cursor : undefined,
+  const nodeResult = useSearchBrainNodes(
+    effectiveTab === "brain" ? query : "",
+    effectiveTab === "brain" ? cursor : undefined,
   );
 
   const activeResult =
-    activeTab === "courses"
+    effectiveTab === "courses"
       ? courseResult
-      : activeTab === "notes"
+      : effectiveTab === "notes"
         ? noteResult
-        : brainResult;
+        : nodeResult;
 
   const isLoading = activeResult.isLoading;
   const error = activeResult.error;
@@ -85,22 +83,22 @@ export default function SearchPage() {
       : (noteResult.data?.notes ?? []);
   const nodes =
     cursor && accNodes.length > 0
-      ? [...accNodes, ...(brainResult.data?.nodes ?? [])]
-      : (brainResult.data?.nodes ?? []);
+      ? [...accNodes, ...(nodeResult.data?.nodes ?? [])]
+      : (nodeResult.data?.nodes ?? []);
 
   const hitsTotal =
-    activeTab === "courses"
+    effectiveTab === "courses"
       ? (courseResult.data?.hitsTotal ?? 0)
-      : activeTab === "notes"
+      : effectiveTab === "notes"
         ? (noteResult.data?.hitsTotal ?? 0)
-        : (brainResult.data?.hitsTotal ?? 0);
+        : (nodeResult.data?.hitsTotal ?? 0);
 
   const nextCursor =
-    activeTab === "courses"
+    effectiveTab === "courses"
       ? courseResult.data?.cursor
-      : activeTab === "notes"
+      : effectiveTab === "notes"
         ? noteResult.data?.cursor
-        : brainResult.data?.cursor;
+        : nodeResult.data?.cursor;
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -127,9 +125,9 @@ export default function SearchPage() {
 
   const handleLoadMore = () => {
     if (!nextCursor) return;
-    if (activeTab === "courses") setAccCourses(courses as Course[]);
-    if (activeTab === "notes") setAccNotes(notes);
-    if (activeTab === "brain") setAccNodes(nodes);
+    if (effectiveTab === "courses") setAccCourses(courses as Course[]);
+    if (effectiveTab === "notes") setAccNotes(notes);
+    if (effectiveTab === "brain") setAccNodes(nodes);
     setCursor(nextCursor);
   };
 
@@ -163,7 +161,7 @@ export default function SearchPage() {
             key={tab}
             onClick={() => handleTabChange(tab)}
             className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
-              activeTab === tab
+              effectiveTab === tab
                 ? "border-academic text-academic"
                 : "border-transparent text-text-muted hover:text-text hover:border-border"
             }`}
@@ -201,7 +199,7 @@ export default function SearchPage() {
           </p>
 
           {/* Course results */}
-          {activeTab === "courses" &&
+          {effectiveTab === "courses" &&
             (courses.length === 0 ? (
               <p className="text-center py-12 text-text-muted">
                 No courses found.
@@ -215,7 +213,7 @@ export default function SearchPage() {
             ))}
 
           {/* Note results */}
-          {activeTab === "notes" &&
+          {effectiveTab === "notes" &&
             (notes.length === 0 ? (
               <p className="text-center py-12 text-text-muted">
                 No notes found.
@@ -229,7 +227,7 @@ export default function SearchPage() {
             ))}
 
           {/* Brain node results */}
-          {activeTab === "brain" &&
+          {effectiveTab === "brain" &&
             (nodes.length === 0 ? (
               <p className="text-center py-12 text-text-muted">
                 No brain nodes found.
