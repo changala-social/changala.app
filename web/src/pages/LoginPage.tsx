@@ -62,7 +62,10 @@ function LoginForm({ authError }: { authError: string | null }) {
       return;
     }
 
-    const redirectAfter = `${RING_URL}/auth/complete`;
+    // redirect_after → Ring's /auth/complete (same origin as cookie).
+    // Pass ?frontend= so /auth/complete knows where to send the user back.
+    const frontendLogin = `${window.location.origin}/login`;
+    const redirectAfter = `${RING_URL}/auth/complete?frontend=${encodeURIComponent(frontendLogin)}`;
     window.location.href = `${RING_URL}/auth/login?handle=${encodeURIComponent(trimmed)}&redirect_after=${encodeURIComponent(redirectAfter)}`;
   }
 

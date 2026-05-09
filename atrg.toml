@@ -9,7 +9,7 @@ environment = "development"
 [auth]
 client_id = "https://changala.tail477f2f.ts.net/client-metadata.json"
 redirect_uri = "https://changala.tail477f2f.ts.net/auth/callback"
-post_login_redirect = "http://localhost:5173/login"
+post_login_redirect = "https://changala-app.pages.dev/login"
 scope = "atproto transition:generic"
 
 [database]

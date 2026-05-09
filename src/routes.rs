@@ -387,7 +387,25 @@ async fn well_known_oauth(State(state): State<AppState>) -> Json<serde_json::Val
 ///
 /// This avoids the cross-origin cookie problem: the cookie is only used on the
 /// Ring's own domain, and the frontend receives the session info via URL params.
-async fn auth_complete(State(state): State<AppState>, headers: HeaderMap) -> Response {
+/// Query params for the session handoff endpoint.
+#[derive(serde::Deserialize)]
+struct AuthCompleteParams {
+    /// The frontend URL to redirect to. Passed through the OAuth flow so
+    /// /auth/complete knows where the user's browser came from.
+    /// Falls back to `post_login_redirect` in atrg.toml.
+    frontend: Option<String>,
+}
+
+async fn auth_complete(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<AuthCompleteParams>,
+    headers: HeaderMap,
+) -> Response {
+    let frontend = params
+        .frontend
+        .filter(|f| !f.trim().is_empty())
+        .unwrap_or_else(|| state.config.auth.post_login_redirect.clone());
+
     // 1. Extract atrg_session from the cookie header
     let session_id = headers
         .get(axum::http::header::COOKIE)
@@ -400,8 +418,6 @@ async fn auth_complete(State(state): State<AppState>, headers: HeaderMap) -> Res
         });
 
     let Some(session_id) = session_id else {
-        // No cookie — redirect to frontend login with error
-        let frontend = &state.config.auth.post_login_redirect;
         return axum::response::Redirect::temporary(&format!("{}?error=no_session", frontend))
             .into_response();
     };
@@ -411,8 +427,6 @@ async fn auth_complete(State(state): State<AppState>, headers: HeaderMap) -> Res
 
     match session {
         Ok(Some(s)) => {
-            // 3. Redirect to frontend with session info in URL
-            let frontend = &state.config.auth.post_login_redirect;
             let redirect_url = format!(
                 "{}?token={}&did={}&handle={}",
                 frontend,
@@ -422,10 +436,7 @@ async fn auth_complete(State(state): State<AppState>, headers: HeaderMap) -> Res
             );
             axum::response::Redirect::temporary(&redirect_url).into_response()
         }
-        _ => {
-            let frontend = &state.config.auth.post_login_redirect;
-            axum::response::Redirect::temporary(&format!("{}?error=invalid_session", frontend))
-                .into_response()
-        }
+        _ => axum::response::Redirect::temporary(&format!("{}?error=invalid_session", frontend))
+            .into_response(),
     }
 }
