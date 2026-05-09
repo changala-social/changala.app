@@ -242,7 +242,24 @@ Changala has **two layers** and **three runtime components**.
 
 ---
 
-## Phase 9: Federation (Post-MVP) 🔜 NEXT
+## Phase 8.5: RBAC & Admin Provisioning 🔜 NEXT
+
+> Admin bootstrapping, email verification, and role management without direct DB access.
+
+- [ ] `POST /xrpc/app.changala.ring.provisionAdmin` — admin provisioning via shared secret (`CHANGALA_ADMIN_SECRET` env var)
+- [ ] `CHANGALA_ADMIN_DIDS` env var — auto-provision admin memberships on startup for listed DIDs
+- [ ] Email verification: integrate SMTP or third-party email API for sending OTPs (currently logged to stdout)
+- [ ] `CHANGALA_SMTP_HOST`, `CHANGALA_SMTP_PORT`, `CHANGALA_SMTP_USER`, `CHANGALA_SMTP_PASS`, `CHANGALA_SMTP_FROM` env vars
+- [ ] `POST /xrpc/app.changala.ring.promoteRole` — admin endpoint to change any user's role
+- [ ] `POST /xrpc/app.changala.ring.demoteRole` — admin endpoint to demote a user's role
+- [ ] Admin audit log — track who performed admin actions (role changes, bans, course creation)
+- [ ] RBAC.md reference document (see RBAC.md for full permission matrix)
+- [ ] Migration: add `promoted_by` and `promoted_at` columns to memberships table
+- [ ] Migration: add `audit_log` table for admin action tracking
+
+---
+
+## Phase 9: Federation (Post-MVP)
 
 - [ ] Multiple Ring instances (one per institution)
 - [ ] Cross-Ring content discovery via Global View aggregation

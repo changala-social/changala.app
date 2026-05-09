@@ -481,6 +481,43 @@ npm install -D @types/d3
 
 ---
 
+## Milestone 6.5: RBAC & Admin Provisioning
+
+> **Goal:** Admin bootstrapping from the UI. Role management without DB access.
+> **Depends on:** Milestone 3 (auth), Milestone 6 (admin panel).
+> **Deliverable:** An admin can provision new admins, promote/demote users, and verify emails from the admin panel.
+
+### 6.5.1 Admin Provisioning Page
+
+- Admin provisioning form: enter DID + shared secret → `provisionAdmin`
+- Only shown when user is not yet an admin (bootstrapping flow)
+- Or: ENV-based auto-provisioning (no UI needed, handled by backend on startup)
+
+### 6.5.2 Role Management (Admin Panel)
+
+- Add "Role Management" tab to `/admin`
+- Search user by DID or handle
+- View current role + membership details
+- Promote/demote buttons → `promoteRole` / `demoteRole` endpoints
+- Audit log viewer — recent admin actions
+
+### 6.5.3 Email Verification UI
+
+- Add email verification flow to `/login` or `/dashboard`
+- After OAuth login, prompt for institution email if no membership exists
+- OTP input form → `verifyEmail` (step 1: request, step 2: verify)
+- Show membership status on profile page
+
+### Milestone 6.5 Checklist
+
+- [ ] Admin provisioning form (or ENV-based bootstrapping)
+- [ ] Role management UI in admin panel (promote/demote)
+- [ ] Email verification flow (OTP request + verify)
+- [ ] Membership status on profile/dashboard
+- [ ] Audit log viewer (admin panel)
+
+---
+
 ## Milestone 7: Search + Archives
 
 > **Goal:** Unified search across all content. Archive browsing.
@@ -591,6 +628,7 @@ M0 (Foundation)
  │    ├── M4 (Brain Layer)
  │    │    └── M5 (Graph Visualization)
  │    └── M6 (Collective Notes + Admin)
+ │         └── M6.5 (RBAC + Admin Provisioning)
  └── M8 (Polish + Deploy) ← depends on all above
 ```
 
@@ -711,8 +749,9 @@ The UIUX.md says it best: *"Ship the course feed first, then the keyword histogr
 5. **M4** — Brain layer (prove the Zettelkasten)
 6. **M5** — Graph view (the demo that sells it)
 7. **M6** — Collective notes + admin (class rep workflows)
-8. **M7** — Search + archives (discovery + preservation)
-9. **M8** — Polish + deploy (ship to `changala.app`)
+8. **M6.5** — RBAC + admin provisioning (role management + email verification)
+9. **M7** — Search + archives (discovery + preservation)
+10. **M8** — Polish + deploy (ship to `changala.app`)
 
 ---
 
