@@ -3,6 +3,7 @@ use atrg_core::AtrgApp;
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 
+mod api_key_auth;
 mod blob;
 mod email;
 mod handlers;

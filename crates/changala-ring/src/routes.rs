@@ -34,8 +34,15 @@ pub fn api() -> Router<AppState> {
 }
 
 /// All Ring XRPC routes — every endpoint wired to a real handler.
+///
+/// The `api_key_auth` middleware layer runs on every XRPC request. It
+/// intercepts `Bearer chg_*` tokens, validates them against `api_keys`,
+/// and injects a synthetic session so `RequireAuth` works transparently.
 fn xrpc_routes() -> Router<AppState> {
     atrg_xrpc::xrpc_router()
+        .layer(axum::middleware::from_fn(
+            crate::api_key_auth::api_key_auth_middleware,
+        ))
         // ── Identity ────────────────────────────────────────
         .route(
             "/xrpc/app.changala.ring.verifyEmail",
