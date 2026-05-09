@@ -9,7 +9,6 @@
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::schemars::JsonSchema;
-use rmcp::service::ServiceExt;
 use rmcp::{tool, tool_router};
 use serde::Deserialize;
 
@@ -381,19 +380,33 @@ async fn main() -> anyhow::Result<()> {
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("changala_mcp=info".parse()?),
         )
-        .with_writer(std::io::stderr)
         .init();
 
-    tracing::info!("starting changala-mcp server");
+    // Validate config early
+    let _ = ChangalaServer::new()?;
 
-    let server = ChangalaServer::new()?;
+    let host = std::env::var("MCP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let port = std::env::var("MCP_PORT").unwrap_or_else(|_| "3001".to_string());
+    let bind = format!("{}:{}", host, port);
 
-    // Run on stdio transport (for Claude Desktop / Cursor)
-    let transport = rmcp::transport::io::stdio();
+    tracing::info!(bind = %bind, "starting changala-mcp server");
 
-    let service = server.serve(transport).await?;
+    use rmcp::transport::streamable_http_server::{
+        session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+    };
 
-    service.waiting().await?;
+    let service: StreamableHttpService<ChangalaServer, LocalSessionManager> =
+        StreamableHttpService::new(
+            || ChangalaServer::new().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+            Default::default(),
+            StreamableHttpServerConfig::default(),
+        );
+
+    let router = axum::Router::new().nest_service("/mcp", service);
+
+    let listener = tokio::net::TcpListener::bind(&bind).await?;
+    tracing::info!("MCP server listening on http://{}/mcp", bind);
+    axum::serve(listener, router).await?;
 
     Ok(())
 }
