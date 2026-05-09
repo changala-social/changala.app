@@ -18,9 +18,12 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(bind = %bind, "starting changala-mcp server");
 
     let service = changala_mcp::mcp_service();
-    let router = axum::Router::new()
-        .nest_service("/mcp", service)
-        .layer(axum::middleware::from_fn(changala_mcp::mcp_auth_middleware));
+    let router =
+        axum::Router::new()
+            .nest_service("/mcp", service)
+            .layer(axum::middleware::from_fn(
+                changala_mcp::standalone_auth_middleware,
+            ));
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!("MCP server listening on http://{}/mcp", bind);

@@ -8,10 +8,12 @@
 //!
 //! # Security
 //!
-//! The `/mcp` endpoint **must** be protected by [`mcp_auth_layer()`] or an
-//! equivalent auth gate. Without it, anyone who can reach the endpoint gets
-//! full admin access through the pre-authenticated API key held by the MCP
-//! server.
+//! When mounted on the Ring, the `/mcp` endpoint is protected by the Ring's
+//! `mcp_gate_middleware` which validates API keys against the `api_keys`
+//! database table. No env var needed.
+//!
+//! The standalone binary uses [`standalone_auth_middleware`] which falls
+//! back to the `CHANGALA_MCP_ACCESS_KEY` env var (no DB access).
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
@@ -381,24 +383,18 @@ impl ChangalaServer {
 }
 
 // ---------------------------------------------------------------------------
-// Auth middleware
+// Auth middleware (standalone binary only)
 // ---------------------------------------------------------------------------
 
-/// Axum middleware that gates the MCP endpoint behind a bearer token
-/// read from `CHANGALA_MCP_ACCESS_KEY`.
+/// Simple env-var auth middleware for the **standalone** MCP binary.
 ///
-/// If the env var is **not** set, the middleware permits all requests but
-/// logs a warning on first use. This keeps backwards compatibility while
-/// making it loud that auth is missing.
+/// When the MCP server is mounted on the Ring, use the Ring's
+/// `mcp_gate_middleware` instead — it validates against the `api_keys`
+/// database table.
 ///
-/// # Usage
-///
-/// ```ignore
-/// let mcp_router = axum::Router::new()
-///     .route_service("/mcp", changala_mcp::mcp_service())
-///     .layer(axum::middleware::from_fn(changala_mcp::mcp_auth_middleware));
-/// ```
-pub async fn mcp_auth_middleware(
+/// This middleware is only for the standalone `changala-mcp` binary which
+/// has no database access. It gates on `CHANGALA_MCP_ACCESS_KEY` env var.
+pub async fn standalone_auth_middleware(
     req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
@@ -444,14 +440,15 @@ pub async fn mcp_auth_middleware(
 
 /// Create the MCP axum service that can be `route_service`'d onto a Router.
 ///
-/// **Always** combine with [`mcp_auth_layer()`] to gate access.
+/// **When mounted on the Ring**, gate with the Ring's `mcp_gate_middleware`
+/// which validates against the `api_keys` database table.
 ///
 /// # Example
 ///
 /// ```ignore
 /// let mcp_router = axum::Router::new()
 ///     .route_service("/mcp", changala_mcp::mcp_service())
-///     .layer(axum::middleware::from_fn(changala_mcp::mcp_auth_middleware));
+///     .layer(axum::middleware::from_fn(api_key_auth::mcp_gate_middleware));
 /// ```
 #[must_use]
 pub fn mcp_service() -> rmcp::transport::streamable_http_server::StreamableHttpService<

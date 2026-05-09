@@ -127,3 +127,54 @@ pub async fn api_key_auth_middleware(req: Request<Body>, next: Next) -> Response
 
     next.run(req).await
 }
+
+/// Simpler gate middleware for the `/mcp` endpoint.
+///
+/// Unlike [`api_key_auth_middleware`] (which bridges keys to atrg sessions),
+/// this just validates `Bearer chg_*` tokens against the `api_keys` table
+/// and allows/denies. No session creation, no header rewriting.
+///
+/// This replaces the old env-var-based `CHANGALA_MCP_ACCESS_KEY` check —
+/// API keys created via the UI now gate MCP access directly.
+pub async fn mcp_gate_middleware(req: Request<Body>, next: Next) -> Response {
+    let auth_header = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.trim().to_string());
+
+    let Some(ref key) = auth_header else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({
+                "error": "Unauthorized",
+                "message": "Bearer token required for MCP access"
+            })),
+        )
+            .into_response();
+    };
+
+    let app = crate::state::get();
+    let key_result = crate::handlers::apikeys::find_api_key(&app.db, key).await;
+
+    match key_result {
+        Ok(Some(_)) => next.run(req).await,
+        Ok(None) => (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({
+                "error": "InvalidApiKey",
+                "message": "API key is invalid or expired"
+            })),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({
+                "error": "InternalServerError",
+                "message": "Failed to validate API key"
+            })),
+        )
+            .into_response(),
+    }
+}

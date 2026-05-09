@@ -306,7 +306,9 @@ async fn main() -> anyhow::Result<()> {
         let mcp_router = axum::Router::<atrg_core::AppState>::new()
             .route_service("/mcp", changala_mcp::mcp_service())
             .route_service("/mcp/", changala_mcp::mcp_service())
-            .layer(axum::middleware::from_fn(changala_mcp::mcp_auth_middleware));
+            .layer(axum::middleware::from_fn(
+                crate::api_key_auth::mcp_gate_middleware,
+            ));
         builder = builder.mount(mcp_router);
     }
 
