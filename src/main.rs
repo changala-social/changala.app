@@ -227,7 +227,7 @@ async fn main() -> anyhow::Result<()> {
                  ON CONFLICT (did, institution_did) DO UPDATE SET role = 'admin'"
             )
             .bind(did)
-            .bind(&chrono::Utc::now().to_rfc3339())
+            .bind(chrono::Utc::now().to_rfc3339())
             .execute(&pg_pool)
             .await;
             match result {

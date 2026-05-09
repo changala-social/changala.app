@@ -21,7 +21,8 @@ pub struct Changala {
     pub allowed_email_domains: Vec<String>,
     /// Optional SMTP config — None = dev mode (log OTPs to stdout).
     pub smtp: Option<SmtpConfig>,
-    /// DIDs to auto-provision as admin on startup.
+    /// DIDs to auto-provision as admin on startup (consumed in main, not read via state).
+    #[allow(dead_code)]
     pub admin_dids: Vec<String>,
 }
 
