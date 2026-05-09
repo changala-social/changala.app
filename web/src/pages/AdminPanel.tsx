@@ -1,17 +1,24 @@
 import { useState, type FormEvent } from "react";
 import { useXrpcMutation, useXrpcQuery } from "../hooks/useXrpc";
 import { useInitiateArchive, useSealArchive } from "../hooks/useArchive";
+import {
+  usePromoteRole,
+  useDemoteRole,
+  useAuditLog,
+} from "../hooks/useIdentity";
+import { useMemberships, useRole } from "../hooks/useAuth";
 import { useAuth } from "../context/AuthContext";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { ErrorMessage } from "../components/common/ErrorMessage";
 import type { ListBansResponse, Visibility } from "../generated/types";
 
-type AdminTab = "courses" | "moderation" | "archive";
+type AdminTab = "courses" | "moderation" | "archive" | "roles";
 
 const TAB_LABELS: Record<AdminTab, string> = {
   courses: "Course Management",
   moderation: "Moderation",
   archive: "Archive",
+  roles: "Roles",
 };
 
 // ── Sub-components ───────────────────────────────────────────
@@ -586,6 +593,240 @@ function ArchiveSection() {
   );
 }
 
+// ── Role Management ──────────────────────────────────────────
+
+function RoleManagementSection() {
+  const [targetDid, setTargetDid] = useState("");
+  const [lookedUpDid, setLookedUpDid] = useState("");
+
+  const promote = usePromoteRole();
+  const demote = useDemoteRole();
+
+  const { data: membershipData, isLoading: membershipLoading } =
+    useMemberships(lookedUpDid);
+
+  const {
+    data: roleData,
+    isLoading: roleLoading,
+    refetch: roleRefetch,
+  } = useRole(lookedUpDid);
+
+  const {
+    data: auditData,
+    isLoading: auditLoading,
+    error: auditError,
+    refetch: auditRefetch,
+  } = useAuditLog();
+
+  const handleLookup = (e: FormEvent) => {
+    e.preventDefault();
+    if (!targetDid.trim()) return;
+    setLookedUpDid(targetDid.trim());
+  };
+
+  const handlePromote = (role: string) => {
+    if (!lookedUpDid) return;
+    promote.mutate(
+      { targetDid: lookedUpDid, role },
+      {
+        onSuccess: () => {
+          roleRefetch();
+          auditRefetch();
+        },
+      },
+    );
+  };
+
+  const handleDemote = (role: string) => {
+    if (!lookedUpDid) return;
+    demote.mutate(
+      { targetDid: lookedUpDid, role },
+      {
+        onSuccess: () => {
+          roleRefetch();
+          auditRefetch();
+        },
+      },
+    );
+  };
+
+  const memberships = membershipData?.memberships ?? [];
+  const currentRole = roleData?.role ?? null;
+  const auditEntries = auditData?.entries ?? [];
+
+  return (
+    <div className="space-y-8">
+      {/* Lookup user */}
+      <div>
+        <h3 className="text-base font-semibold text-text mb-4">
+          Role Management
+        </h3>
+        <form onSubmit={handleLookup} className="flex gap-3">
+          <input
+            type="text"
+            value={targetDid}
+            onChange={(e) => setTargetDid(e.target.value)}
+            placeholder="did:plc:abc123..."
+            className="flex-1 rounded-md border border-border bg-surface-alt px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-academic/50"
+          />
+          <button
+            type="submit"
+            disabled={!targetDid.trim()}
+            className="rounded-md bg-academic px-4 py-2 text-sm font-medium text-white hover:bg-academic/90 disabled:opacity-50 transition"
+          >
+            Look Up
+          </button>
+        </form>
+      </div>
+
+      {/* User details */}
+      {lookedUpDid && (
+        <div className="rounded-lg border border-border bg-surface p-4 space-y-4">
+          <div>
+            <p className="text-xs text-text-muted">DID</p>
+            <p className="text-sm font-mono text-text break-all">
+              {lookedUpDid}
+            </p>
+          </div>
+
+          {/* Current role */}
+          <div>
+            <p className="text-xs text-text-muted mb-1">Current Role</p>
+            {roleLoading ? (
+              <LoadingSpinner size="sm" />
+            ) : currentRole ? (
+              <span className="inline-block rounded-full bg-academic/10 text-academic px-3 py-0.5 text-sm font-medium">
+                {currentRole}
+              </span>
+            ) : (
+              <span className="text-sm text-text-muted">No role assigned</span>
+            )}
+          </div>
+
+          {/* Memberships */}
+          <div>
+            <p className="text-xs text-text-muted mb-1">Memberships</p>
+            {membershipLoading ? (
+              <LoadingSpinner size="sm" />
+            ) : memberships.length === 0 ? (
+              <span className="text-sm text-text-muted">No memberships</span>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {memberships.map((m, i) => (
+                  <span
+                    key={i}
+                    className="inline-block rounded-full bg-live/10 text-live px-3 py-0.5 text-xs font-medium"
+                  >
+                    {m.institutionDomain}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Promote / Demote actions */}
+          <div>
+            <p className="text-xs text-text-muted mb-2">Actions</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handlePromote("classRep")}
+                disabled={promote.isPending || currentRole === "classRep"}
+                className="rounded-md border border-academic bg-academic/10 px-3 py-1.5 text-xs font-medium text-academic hover:bg-academic/20 disabled:opacity-50 transition"
+              >
+                {promote.isPending ? "..." : "Promote to Class Rep"}
+              </button>
+              <button
+                onClick={() => handlePromote("admin")}
+                disabled={promote.isPending || currentRole === "admin"}
+                className="rounded-md border border-academic bg-academic/10 px-3 py-1.5 text-xs font-medium text-academic hover:bg-academic/20 disabled:opacity-50 transition"
+              >
+                {promote.isPending ? "..." : "Promote to Admin"}
+              </button>
+              <button
+                onClick={() => handleDemote("student")}
+                disabled={
+                  demote.isPending || currentRole === "student" || !currentRole
+                }
+                className="rounded-md border border-cancelled bg-cancelled/10 px-3 py-1.5 text-xs font-medium text-cancelled hover:bg-cancelled/20 disabled:opacity-50 transition"
+              >
+                {demote.isPending ? "..." : "Demote to Student"}
+              </button>
+            </div>
+            {promote.isError && (
+              <ErrorMessage
+                title="Promotion failed"
+                message={promote.error?.message}
+              />
+            )}
+            {demote.isError && (
+              <ErrorMessage
+                title="Demotion failed"
+                message={demote.error?.message}
+              />
+            )}
+            {promote.isSuccess && (
+              <p className="mt-2 text-xs text-live">
+                Role updated successfully.
+              </p>
+            )}
+            {demote.isSuccess && (
+              <p className="mt-2 text-xs text-live">
+                Role updated successfully.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Audit Log */}
+      <div>
+        <h3 className="text-base font-semibold text-text mb-4">Audit Log</h3>
+        {auditLoading ? (
+          <LoadingSpinner size="md" />
+        ) : auditError ? (
+          <ErrorMessage
+            title="Failed to load audit log"
+            message={
+              auditError instanceof Error ? auditError.message : "Unknown error"
+            }
+            retry={() => auditRefetch()}
+          />
+        ) : auditEntries.length === 0 ? (
+          <div className="text-center py-8 rounded-lg border border-border bg-surface">
+            <p className="text-sm text-text-muted">No audit entries yet.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {auditEntries.map((entry, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-3 p-3 rounded-lg border border-border bg-surface"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-text font-medium">
+                    {entry.action}
+                  </p>
+                  <p className="text-xs text-text-muted mt-0.5 font-mono truncate">
+                    by {entry.actorDid}
+                  </p>
+                  {entry.targetDid && (
+                    <p className="text-xs text-text-muted font-mono truncate">
+                      target: {entry.targetDid}
+                    </p>
+                  )}
+                </div>
+                <span className="shrink-0 text-xs text-text-muted">
+                  {new Date(entry.createdAt).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main AdminPanel ──────────────────────────────────────────
 
 export default function AdminPanel() {
@@ -636,6 +877,8 @@ export default function AdminPanel() {
       {activeTab === "moderation" && <BanSection />}
 
       {activeTab === "archive" && <ArchiveSection />}
+
+      {activeTab === "roles" && <RoleManagementSection />}
     </div>
   );
 }

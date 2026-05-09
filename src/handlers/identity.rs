@@ -20,6 +20,20 @@ pub async fn verify_email(
 
     match input.otp {
         None => {
+            // Validate email domain against allowlist
+            let domain = input.email.split('@').nth(1).unwrap_or("").to_lowercase();
+            let allowed = &app.allowed_email_domains;
+            if !allowed.is_empty() && !allowed.iter().any(|d| d == &domain) {
+                return Err(XrpcError {
+                    name: XrpcErrorName::InvalidRequest,
+                    message: format!(
+                        "Email domain '{}' is not allowed. Use your institution email (allowed: {}).",
+                        domain,
+                        allowed.join(", ")
+                    ),
+                });
+            }
+
             // Step 1: Generate and store OTP
             let code = generate_otp();
             let expires_at = chrono::Utc::now().timestamp() + 600; // 10 minutes
@@ -38,8 +52,16 @@ pub async fn verify_email(
                 message: format!("Failed to store OTP: {e}"),
             })?;
 
-            // In production, send email here. For MVP, log it.
-            tracing::info!(did = %input.did, email = %input.email, otp = %code, "OTP generated (dev mode — logged, not emailed)");
+            // Send OTP via email (or log in dev mode if SMTP not configured)
+            if let Err(e) =
+                crate::email::send_otp_email(app.smtp.as_ref(), &input.email, &code).await
+            {
+                tracing::error!(email = %input.email, error = %e, "Failed to send OTP email");
+                return Err(XrpcError {
+                    name: XrpcErrorName::InternalServerError,
+                    message: "Failed to send verification email. Please try again.".to_string(),
+                });
+            }
 
             Ok(Json(AppChangalaRingVerifyEmailOutput {
                 status: "otpSent".to_string(),
@@ -47,6 +69,20 @@ pub async fn verify_email(
             }))
         }
         Some(otp) => {
+            // Validate email domain against allowlist (prevents submitting OTP for disallowed domain)
+            let domain = input.email.split('@').nth(1).unwrap_or("").to_lowercase();
+            let allowed = &app.allowed_email_domains;
+            if !allowed.is_empty() && !allowed.iter().any(|d| d == &domain) {
+                return Err(XrpcError {
+                    name: XrpcErrorName::InvalidRequest,
+                    message: format!(
+                        "Email domain '{}' is not allowed. Use your institution email (allowed: {}).",
+                        domain,
+                        allowed.join(", ")
+                    ),
+                });
+            }
+
             // Step 2: Verify OTP
             let now = chrono::Utc::now().timestamp();
 

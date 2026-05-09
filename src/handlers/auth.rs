@@ -86,6 +86,30 @@ pub async fn require_enrolled(db: &PgPool, did: &str, course_uri: &str) -> Resul
     }
 }
 
+/// Require that the DID has a verified institution membership.
+/// AT Protocol login alone is not enough — the user must have verified
+/// an institution email. Returns Err(Forbidden) if no membership exists.
+pub async fn require_institution_member(db: &PgPool, did: &str) -> Result<(), XrpcError> {
+    let has_membership =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM memberships WHERE did = $1")
+            .bind(did)
+            .fetch_one(db)
+            .await
+            .map_err(|e| XrpcError {
+                name: XrpcErrorName::InternalServerError,
+                message: format!("Membership check failed: {e}"),
+            })?;
+
+    if has_membership == 0 {
+        Err(XrpcError {
+            name: XrpcErrorName::Forbidden,
+            message: "Institution email verification required. Verify your institution email to access this feature.".to_string(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
 /// Check if a DID is the class rep for a course, or an admin.
 pub async fn require_class_rep_or_admin(
     db: &PgPool,

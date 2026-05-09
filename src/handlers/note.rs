@@ -32,6 +32,7 @@ pub async fn add_keyword(
 ) -> Result<Json<AppChangalaRingAddKeywordOutput>, XrpcError> {
     let app = crate::state::get();
     auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_institution_member(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -116,6 +117,7 @@ pub async fn create_note(
 ) -> Result<Json<AppChangalaRingCreateNoteOutput>, XrpcError> {
     let app = crate::state::get();
     auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_institution_member(&app.db, &session.did).await?;
 
     let now = input
         .created_at
@@ -382,6 +384,7 @@ pub async fn propose_edit(
 ) -> Result<Json<AppChangalaRingProposeEditOutput>, XrpcError> {
     let app = crate::state::get();
     auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_institution_member(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let diff_cid = app

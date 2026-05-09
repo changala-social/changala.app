@@ -342,6 +342,7 @@ pub async fn enroll_student(
 ) -> Result<Json<AppChangalaRingEnrollStudentOutput>, XrpcError> {
     let app = crate::state::get();
     auth::check_not_banned(&app.db, &session.did).await?;
+    auth::require_institution_member(&app.db, &session.did).await?;
 
     let did = input.target_did.unwrap_or_else(|| session.did.clone());
     let now = Utc::now().to_rfc3339();

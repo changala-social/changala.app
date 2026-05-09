@@ -175,6 +175,23 @@ fn xrpc_routes() -> Router<AppState> {
             "/xrpc/app.changala.ring.isBanned",
             get(handlers::moderation::is_banned),
         )
+        // ── Admin Provisioning ──────────────────────────────
+        .route(
+            "/xrpc/app.changala.ring.provisionAdmin",
+            post(handlers::admin::provision_admin),
+        )
+        .route(
+            "/xrpc/app.changala.ring.promoteRole",
+            post(handlers::admin::promote_role),
+        )
+        .route(
+            "/xrpc/app.changala.ring.demoteRole",
+            post(handlers::admin::demote_role),
+        )
+        .route(
+            "/xrpc/app.changala.ring.getAuditLog",
+            get(handlers::admin::get_audit_log),
+        )
         // ── Archive ─────────────────────────────────────────
         .route(
             "/xrpc/app.changala.ring.initiateArchive",

@@ -4,6 +4,7 @@ use sqlx::postgres::PgPool;
 use std::sync::Arc;
 
 mod blob;
+mod email;
 #[allow(dead_code)]
 mod generated;
 mod handlers;
@@ -20,6 +21,14 @@ mod state;
 ///   CHANGALA_S3_ACCESS_KEY   →  [changala.s3] access_key
 ///   CHANGALA_S3_SECRET_KEY   →  [changala.s3] secret_key
 ///   CHANGALA_S3_PATH_STYLE   →  [changala.s3] path_style  (true/false)
+///   CHANGALA_ALLOWED_EMAIL_DOMAINS → [changala] allowed_email_domains (comma-separated)
+///   CHANGALA_ADMIN_DIDS      →  [changala] admin_dids  (comma-separated)
+///   CHANGALA_SMTP_HOST       →  [changala.smtp] host
+///   CHANGALA_SMTP_PORT       →  [changala.smtp] port
+///   CHANGALA_SMTP_USERNAME   →  [changala.smtp] username
+///   CHANGALA_SMTP_PASSWORD   →  [changala.smtp] password
+///   CHANGALA_SMTP_FROM       →  [changala.smtp] from
+///   CHANGALA_SMTP_ENCRYPTION →  [changala.smtp] encryption
 ///
 /// Framework-level config ([app], [auth], [database]) is overridden
 /// via ATRG_* env vars — see atrg-core's env_override module:
@@ -37,6 +46,12 @@ mod state;
 struct ChangalaConfig {
     database_url: String,
     s3: blob::S3Config,
+    #[serde(default)]
+    smtp: Option<email::SmtpConfig>,
+    #[serde(default)]
+    allowed_email_domains: Vec<String>,
+    #[serde(default)]
+    admin_dids: Vec<String>,
 }
 
 impl ChangalaConfig {
@@ -77,6 +92,67 @@ impl ChangalaConfig {
                 ),
             }
             overrides.push("CHANGALA_S3_PATH_STYLE");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_ALLOWED_EMAIL_DOMAINS") {
+            self.allowed_email_domains = v
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            overrides.push("CHANGALA_ALLOWED_EMAIL_DOMAINS");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_ADMIN_DIDS") {
+            self.admin_dids = v
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            overrides.push("CHANGALA_ADMIN_DIDS");
+        }
+        // SMTP overrides
+        if let Ok(v) = std::env::var("CHANGALA_SMTP_HOST") {
+            let smtp = self.smtp.get_or_insert_with(|| email::SmtpConfig {
+                host: String::new(),
+                port: 587,
+                username: String::new(),
+                password: String::new(),
+                from: String::new(),
+                encryption: "starttls".to_string(),
+            });
+            smtp.host = v;
+            overrides.push("CHANGALA_SMTP_HOST");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_SMTP_PORT") {
+            if let Some(ref mut smtp) = self.smtp {
+                if let Ok(port) = v.parse::<u16>() {
+                    smtp.port = port;
+                }
+            }
+            overrides.push("CHANGALA_SMTP_PORT");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_SMTP_USERNAME") {
+            if let Some(ref mut smtp) = self.smtp {
+                smtp.username = v;
+            }
+            overrides.push("CHANGALA_SMTP_USERNAME");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_SMTP_PASSWORD") {
+            if let Some(ref mut smtp) = self.smtp {
+                smtp.password = v;
+            }
+            overrides.push("CHANGALA_SMTP_PASSWORD");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_SMTP_FROM") {
+            if let Some(ref mut smtp) = self.smtp {
+                smtp.from = v;
+            }
+            overrides.push("CHANGALA_SMTP_FROM");
+        }
+        if let Ok(v) = std::env::var("CHANGALA_SMTP_ENCRYPTION") {
+            if let Some(ref mut smtp) = self.smtp {
+                smtp.encryption = v;
+            }
+            overrides.push("CHANGALA_SMTP_ENCRYPTION");
         }
         if overrides.is_empty() {
             tracing::info!("no env var overrides applied, using atrg.toml values");
@@ -137,7 +213,31 @@ async fn main() -> anyhow::Result<()> {
     state::init(state::Changala {
         db: pg_pool.clone(),
         blobs: Arc::new(blobs),
+        allowed_email_domains: config.allowed_email_domains.clone(),
+        smtp: config.smtp.clone(),
+        admin_dids: config.admin_dids.clone(),
     });
+
+    // Auto-provision admin DIDs from config/env var
+    if !config.admin_dids.is_empty() {
+        for did in &config.admin_dids {
+            let result = sqlx::query(
+                "INSERT INTO memberships (did, institution_did, institution_domain, role, verified_at) \
+                 VALUES ($1, 'did:web:system', 'system', 'admin', $2) \
+                 ON CONFLICT (did, institution_did) DO UPDATE SET role = 'admin'"
+            )
+            .bind(did)
+            .bind(&chrono::Utc::now().to_rfc3339())
+            .execute(&pg_pool)
+            .await;
+            match result {
+                Ok(_) => tracing::info!(did = %did, "auto-provisioned admin DID"),
+                Err(e) => {
+                    tracing::warn!(did = %did, error = %e, "failed to auto-provision admin DID")
+                }
+            }
+        }
+    }
 
     // Start the atrg server — shared PgPool, single database for everything.
     // with_db_pool() passes our pool to atrg so it runs its own internal

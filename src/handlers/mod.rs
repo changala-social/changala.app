@@ -4,6 +4,7 @@
 //! to auto-generated placeholder handlers. As you implement business logic,
 //! move the implementations here, organised by service domain.
 
+pub mod admin;
 pub mod archive;
 pub mod auth;
 pub mod brain;

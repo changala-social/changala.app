@@ -5,7 +5,8 @@ import {
   useMarkNotificationRead,
   useMarkAllRead,
 } from "../hooks/useNotifications";
-import { useFollowedEnrollments } from "../hooks/useAuth";
+import { useFollowedEnrollments, useMemberships } from "../hooks/useAuth";
+import { EmailVerification } from "../components/common/EmailVerification";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { ErrorMessage } from "../components/common/ErrorMessage";
 import type { Notification, NotificationType } from "../generated/types";
@@ -30,6 +31,9 @@ const HIGH_PRIORITY: Set<NotificationType> = new Set([
 
 export default function Dashboard() {
   const { isAuthenticated, did } = useAuth();
+
+  const { data: membershipData } = useMemberships(did || "");
+  const hasMembership = (membershipData?.memberships?.length ?? 0) > 0;
 
   const {
     data: notifData,
@@ -75,6 +79,12 @@ export default function Dashboard() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold text-text mb-8">Dashboard</h1>
+
+      {isAuthenticated && !hasMembership && (
+        <div className="mb-6">
+          <EmailVerification onVerified={() => window.location.reload()} />
+        </div>
+      )}
 
       <div className="grid gap-8 lg:grid-cols-3">
         {/* Main column — Notifications */}

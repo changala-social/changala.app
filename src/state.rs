@@ -8,6 +8,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 
 use crate::blob::S3BlobStore;
+use crate::email::SmtpConfig;
 
 /// Global Changala application state.
 #[derive(Clone, Debug)]
@@ -16,6 +17,12 @@ pub struct Changala {
     pub db: PgPool,
     /// S3-compatible blob store for content (notes, brain nodes, archives).
     pub blobs: Arc<S3BlobStore>,
+    /// Allowed institution email domains for membership verification.
+    pub allowed_email_domains: Vec<String>,
+    /// Optional SMTP config — None = dev mode (log OTPs to stdout).
+    pub smtp: Option<SmtpConfig>,
+    /// DIDs to auto-provision as admin on startup.
+    pub admin_dids: Vec<String>,
 }
 
 static INSTANCE: OnceCell<Arc<Changala>> = OnceCell::new();

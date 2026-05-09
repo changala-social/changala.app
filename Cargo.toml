@@ -1,6 +1,6 @@
 [package]
 name = "changala"
-version = "0.1.17"
+version = "0.1.18"
 edition = "2021"
 description = "Federated social learning platform and student knowledge graph on AT Protocol"
 
@@ -38,6 +38,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 once_cell = "1"
+lettre = { version = "0.11", features = ["tokio1-native-tls"] }
 urlencoding = "2.1.3"
 
 [dev-dependencies]
