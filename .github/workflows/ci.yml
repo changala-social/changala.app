@@ -19,17 +19,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
-      # ── Caching ──────────────────────────────────────────────
-      - name: Cache Nix store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/nix
-            /nix/store
-          key: nix-ci-${{ hashFiles('flake.lock', 'flake.nix') }}
-          restore-keys: |
-            nix-ci-
-
       - name: Cache Cargo registry + target
         uses: actions/cache@v4
         with:
