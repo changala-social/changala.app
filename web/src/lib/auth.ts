@@ -1,17 +1,15 @@
 /**
  * Auth storage helpers.
  *
- * With atrg-auth v0.1.3 the real session is managed via an HttpOnly
- * `atrg_session` cookie — the browser sends it automatically on every
- * request to the Ring URL (fetch must use `credentials: 'include'`).
+ * After OAuth login, the real atrg session ID is stored as the token.
+ * The xrpc layer sends it as `Authorization: Bearer <session_id>` on
+ * every request. The backend's RequireAuth extractor looks up the
+ * session ID in the atrg_sessions table.
  *
- * The token stored here is the sentinel value `"cookie-session"` which
- * lets AuthContext know the user is logged in without exposing a real
- * Bearer token to JavaScript. The stored `did` and `handle` are used
- * purely for UI display.
- *
- * If a real Bearer token is stored (e.g. for API testing), the xrpc
- * layer will send it as an Authorization header alongside the cookie.
+ * `credentials: 'include'` is also set on fetch calls so the
+ * atrg_session cookie is sent for same-origin requests, but for
+ * cross-origin (CF Pages → Tailscale Ring) the Bearer header is
+ * the primary auth mechanism.
  */
 const TOKEN_KEY = "changala_access_token";
 const DID_KEY = "changala_did";
