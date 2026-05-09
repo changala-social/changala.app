@@ -628,10 +628,210 @@ They do NOT get a dedicated UI. Their users access the shared frontend at
 
 ---
 
-## Phase 10: Enhanced Features (Post-MVP)
+## Phase 10: API Keys & MCP Server 💡 PLANNED
+
+> First-class MCP (Model Context Protocol) support on the Ring for AI-powered
+> institution management. Eliminates manual frontend labour for bootstrapping,
+> bulk operations, and ongoing maintenance.
+
+### 10.1 Why MCP on the Ring
+
+Setting up Changala for an institution involves creating dozens of courses,
+hundreds of sessions, enrolling students, assigning class reps, configuring
+semesters. Doing this through the admin panel is brutal. An MCP server lets
+an AI assistant (Claude, GPT, etc.) do it conversationally:
+
+> "Create all CS department courses for Fall 2026 based on this syllabus PDF"
+> "Enroll all students from this spreadsheet into CS301"
+> "Open today's sessions and close yesterday's"
+> "Show me all students who haven't submitted keywords this week"
+
+MCP lives on the **Ring** because:
+- All write operations are Ring endpoints (`app.changala.ring.*`)
+- Institution-scoped — each Ring serves one institution
+- Admin operations require Ring-level auth, not Aggregator
+- The Aggregator is read-only — MCP needs writes
+
+Post-MVP, students get limited MCP access for their own brain nodes.
+
+### 10.2 API Key System (Prerequisite)
+
+MCP servers authenticate via API keys, not OAuth. The Ring needs an API key
+system that maps keys to DIDs + roles.
+
+**Schema:**
+
+```sql
+CREATE TABLE api_keys (
+    id BIGSERIAL PRIMARY KEY,
+    key_hash TEXT NOT NULL UNIQUE,     -- SHA-256 of the API key
+    key_prefix TEXT NOT NULL,          -- first 8 chars for identification
+    did TEXT NOT NULL,                 -- owner DID
+    name TEXT NOT NULL,                -- human-readable label
+    scopes TEXT NOT NULL DEFAULT '[]', -- JSON array of allowed scopes
+    expires_at TEXT,                   -- optional expiry
+    created_at TEXT NOT NULL,
+    last_used_at TEXT
+);
+```
+
+**Scopes:**
+
+| Scope | What it allows |
+|---|---|
+| `admin:*` | All admin operations (courses, roles, moderation, archives) |
+| `admin:courses` | Create/list courses, assign class reps |
+| `admin:sessions` | Session lifecycle (create, open, close, cancel) |
+| `admin:moderation` | Ban/unban users |
+| `admin:roles` | Promote/demote users |
+| `write:notes` | Create/version notes |
+| `write:brain` | Create/version brain nodes and links |
+| `read:*` | Read any public data |
+
+**Endpoints:**
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `ring.createApiKey` | Admin | Generate a new API key |
+| `GET` | `ring.listApiKeys` | Admin | List all keys (prefix + name, not full key) |
+| `POST` | `ring.revokeApiKey` | Admin | Revoke a key by prefix |
+
+**Usage:** `Authorization: Bearer chg_xxxxxxxxxxxxxxxxxxxx`
+
+API keys are prefixed with `chg_` for easy identification.
+The `RequireAuth` extractor is extended to accept API keys alongside
+OAuth session tokens — it checks the `api_keys` table if the token
+starts with `chg_`.
+
+**Env vars:**
+
+| Env Var | Description |
+|---|---|
+| `CHANGALA_BOOTSTRAP_API_KEY` | Pre-provisioned admin API key for first-time setup (no frontend needed) |
+
+### 10.3 MCP Server
+
+The MCP server runs as a **sidecar mode** of `changala-ring` (same binary,
+different entrypoint) or as a separate lightweight process that calls the
+Ring's XRPC endpoints using an API key.
+
+**Architecture option A: Built into the Ring (recommended)**
+
+```
+changala-ring --mcp      → starts MCP server on stdio/SSE
+changala-ring             → starts normal XRPC server
+```
+
+The MCP server uses the same handler code but exposes it via MCP protocol
+instead of HTTP. No network hop, same process, same DB.
+
+**Architecture option B: Standalone MCP proxy**
+
+A thin MCP server that translates MCP tool calls into XRPC HTTP calls
+to the Ring. Simpler to implement but adds a network hop.
+
+### 10.4 MCP Tools (Admin)
+
+| Tool | Ring endpoint | Description |
+|---|---|---|
+| `create_course` | `ring.createCourse` | Create a course with title, code, dept, semester |
+| `list_courses` | `ring.listCourses` | List courses with filters |
+| `create_session` | `ring.createSession` | Schedule a session |
+| `open_session` | `ring.openSession` | Transition session to live |
+| `close_session` | `ring.closeSession` | End session, open keyword window |
+| `bulk_create_courses` | Multiple `ring.createCourse` | Create N courses from structured input |
+| `bulk_enroll` | Multiple `ring.enrollStudent` | Enroll list of DIDs into a course |
+| `assign_class_rep` | `ring.assignClassRep` | Assign class rep to a course |
+| `promote_role` | `ring.promoteRole` | Change a user's role |
+| `ban_user` | `ring.banDid` | Ban a DID |
+| `list_bans` | `ring.listBans` | View active bans |
+| `initiate_archive` | `ring.initiateArchive` | Start archival for a semester |
+| `verify_email` | `ring.verifyEmail` | Manually verify a user's email |
+| `get_audit_log` | `ring.getAuditLog` | View recent admin actions |
+| `provision_admin` | `ring.provisionAdmin` | Bootstrap admin via shared secret |
+
+### 10.5 MCP Tools (Student — Post-MVP)
+
+| Tool | Ring endpoint | Description |
+|---|---|---|
+| `create_brain_node` | `ring.createNode` | Create a brain node |
+| `create_link` | `ring.createLink` | Link two brain nodes |
+| `create_note` | `ring.createNote` | Submit a note for a session |
+| `add_keyword` | `ring.addKeyword` | Submit a keyword |
+| `my_brain_nodes` | `globalview.getBrainFeed` | List own brain nodes |
+| `search` | `globalview.search*` | Search across content |
+
+### 10.6 MCP Resources
+
+| Resource URI | Description |
+|---|---|
+| `changala://courses` | Course catalog |
+| `changala://courses/{uri}` | Single course detail |
+| `changala://sessions/{uri}` | Session detail + keyword histogram |
+| `changala://brain/{uri}` | Brain node content + backlinks |
+| `changala://audit-log` | Recent admin actions |
+| `changala://bans` | Active ban list |
+
+### 10.7 Implementation Checklist
+
+**API Keys:**
+
+- [ ] Migration: `api_keys` table
+- [ ] `POST ring.createApiKey` / `GET ring.listApiKeys` / `POST ring.revokeApiKey`
+- [ ] Extend `RequireAuth` extractor to accept `chg_` prefixed API keys
+- [ ] `CHANGALA_BOOTSTRAP_API_KEY` env var for first-time setup
+- [ ] API key scopes enforcement
+
+**MCP Server:**
+
+- [ ] Add `mcp-server` crate to workspace (or feature flag on `changala-ring`)
+- [ ] Rust MCP SDK integration ([`mcp-rust-sdk`](https://github.com/modelcontextprotocol/rust-sdk) or hand-rolled)
+- [ ] Admin tools (15 tools mapping to Ring endpoints)
+- [ ] MCP resources for read access
+- [ ] `changala-ring --mcp` entrypoint (stdio transport)
+- [ ] SSE transport option for remote MCP access
+- [ ] Student-scoped MCP tools (post-MVP)
+
+**Frontend (Admin Panel):**
+
+- [ ] API key management tab: create, list, revoke
+- [ ] Copy-to-clipboard for new API keys
+- [ ] MCP connection instructions display
+
+### 10.8 Usage Example
+
+```
+# Bootstrap: generate an admin API key
+curl -X POST https://ring.changala.app/xrpc/app.changala.ring.createApiKey \
+  -H "Authorization: Bearer <session>" \
+  -d '{"name": "MCP Admin Key", "scopes": ["admin:*"]}'
+# → {"key": "chg_abc123...", "prefix": "chg_abc1", ...}
+
+# Configure Claude Desktop / Cursor:
+{
+  "mcpServers": {
+    "changala": {
+      "command": "changala-ring",
+      "args": ["--mcp"],
+      "env": {
+        "CHANGALA_API_KEY": "chg_abc123...",
+        "CHANGALA_RING_URL": "https://ring.changala.app"
+      }
+    }
+  }
+}
+
+# Then in conversation:
+> "Create CS301 Algorithms, CS302 Data Structures, and CS303 OS for Fall 2026"
+> "Enroll all 120 CS students into CS301"
+> "Assign did:plc:xyz as class rep for CS301"
+```
+
+---
+
+## Phase 11: Enhanced Features (Post-MVP)
 
 - [ ] Faculty verification and endorsement labels
-- [ ] AI features (opt-in, requires student collective consent)
 - [ ] Push notifications (replacing MVP polling)
 - [ ] Scanned document → LaTeX conversion
 - [ ] Client-side wikilink auto-parsing (`[[wikilink]]` → link records)
