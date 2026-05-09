@@ -242,20 +242,160 @@ Changala has **two layers** and **three runtime components**.
 
 ---
 
-## Phase 8.5: RBAC & Admin Provisioning 🔜 NEXT
+## Phase 8.5: Identity, Email Verification & RBAC 🔜 NEXT
 
-> Admin bootstrapping, email verification, and role management without direct DB access.
+> User identity tiers, institution email verification with domain allowlists,
+> SMTP-based OTP delivery (Gmail app password), and admin provisioning.
 
-- [ ] `POST /xrpc/app.changala.ring.provisionAdmin` — admin provisioning via shared secret (`CHANGALA_ADMIN_SECRET` env var)
-- [ ] `CHANGALA_ADMIN_DIDS` env var — auto-provision admin memberships on startup for listed DIDs
-- [ ] Email verification: integrate SMTP or third-party email API for sending OTPs (currently logged to stdout)
-- [ ] `CHANGALA_SMTP_HOST`, `CHANGALA_SMTP_PORT`, `CHANGALA_SMTP_USER`, `CHANGALA_SMTP_PASS`, `CHANGALA_SMTP_FROM` env vars
-- [ ] `POST /xrpc/app.changala.ring.promoteRole` — admin endpoint to change any user's role
-- [ ] `POST /xrpc/app.changala.ring.demoteRole` — admin endpoint to demote a user's role
-- [ ] Admin audit log — track who performed admin actions (role changes, bans, course creation)
-- [ ] RBAC.md reference document (see RBAC.md for full permission matrix)
-- [ ] Migration: add `promoted_by` and `promoted_at` columns to memberships table
-- [ ] Migration: add `audit_log` table for admin action tracking
+### 8.5.1 User Identity Tiers
+
+Changala has **three identity tiers**. AT Protocol login alone does NOT grant
+access to institution-specific features — it only proves you control a DID.
+
+| Tier | Who | How obtained | Can do |
+|---|---|---|---|
+| **Public viewer** | Anyone (no login) | Visit the site | Read all world-public content: courses, sessions, notes, brain nodes, archives, search, graph |
+| **AT Proto user** | Logged in via AT Protocol OAuth | Click "Login" | Everything public viewers can do, plus: create brain nodes, create links, vote on public content, view notifications |
+| **Institution member** | AT Proto user + verified institution email | Verify email via OTP | Everything AT Proto users can do, plus: enroll in courses, submit keywords, create notes, propose edits. Role (student/classRep/admin) determines further permissions within the institution. |
+
+**Key distinction:** An AT Protocol login is NOT an institution membership.
+A Bluesky user who logs in can browse and interact with the brain layer (public),
+but cannot enroll in courses or participate in academic sessions until they
+verify an institution email.
+
+### 8.5.2 Email Domain Allowlist
+
+Each Ring instance configures a list of allowed email domains. The `verifyEmail`
+endpoint rejects any email address whose domain is not in the allowlist.
+No Gmail, Yahoo, or other consumer email providers — only institution domains.
+
+**Configuration:**
+
+```toml
+# atrg.toml
+[changala]
+allowed_email_domains = ["nitc.ac.in", "mbcet.ac.in"]
+```
+
+**Env var override:**
+
+```
+CHANGALA_ALLOWED_EMAIL_DOMAINS=nitc.ac.in,mbcet.ac.in
+```
+
+**Validation logic** (in `verifyEmail` handler):
+
+```
+1. Extract domain from email: "student@nitc.ac.in" → "nitc.ac.in"
+2. Check domain against allowlist
+3. If not in allowlist → 400 InvalidRequest: "Email domain not allowed. Use your institution email."
+4. If in allowlist → proceed with OTP generation
+```
+
+### 8.5.3 SMTP Email Delivery (Gmail App Password)
+
+Replace the current OTP-logging-to-stdout with real email delivery via SMTP.
+Use Gmail with a 2FA app password — simplest option, no third-party API needed.
+
+**Approach** (modelled after [Apache Answer](https://github.com/apache/answer)'s
+email service which uses `gomail` with SMTP host/port/user/pass/encryption):
+
+- Rust crate: [`lettre`](https://crates.io/crates/lettre) — mature, async,
+  supports STARTTLS + TLS + plain, handles Gmail app passwords.
+- Connection: STARTTLS on port 587 (Gmail default for app passwords).
+- Authentication: LOGIN with Gmail address + 16-char app password.
+
+**Configuration:**
+
+```toml
+# atrg.toml
+[changala.smtp]
+host = "smtp.gmail.com"
+port = 587
+username = "changala.ring@gmail.com"
+password = "xxxx xxxx xxxx xxxx"   # Gmail 2FA app password
+from = "Changala <changala.ring@gmail.com>"
+encryption = "starttls"             # "starttls" | "tls" | "none"
+```
+
+**Env var overrides (for k8s Secrets):**
+
+| Env Var | Config Path | Example |
+|---|---|---|
+| `CHANGALA_SMTP_HOST` | `[changala.smtp] host` | `smtp.gmail.com` |
+| `CHANGALA_SMTP_PORT` | `[changala.smtp] port` | `587` |
+| `CHANGALA_SMTP_USERNAME` | `[changala.smtp] username` | `changala.ring@gmail.com` |
+| `CHANGALA_SMTP_PASSWORD` | `[changala.smtp] password` | `xxxx xxxx xxxx xxxx` |
+| `CHANGALA_SMTP_FROM` | `[changala.smtp] from` | `Changala <changala.ring@gmail.com>` |
+| `CHANGALA_SMTP_ENCRYPTION` | `[changala.smtp] encryption` | `starttls` |
+
+**Gmail setup steps:**
+
+1. Create a Gmail account for the Ring (e.g. `changala.nitc@gmail.com`)
+2. Enable 2-Factor Authentication on the account
+3. Generate an App Password: Google Account → Security → App Passwords
+4. Use the 16-character app password as `CHANGALA_SMTP_PASSWORD`
+5. Set `CHANGALA_SMTP_USERNAME` to the Gmail address
+
+**OTP email template:**
+
+```
+Subject: Changala — Your verification code
+
+Your verification code is: 482910
+
+This code expires in 10 minutes.
+If you did not request this, ignore this email.
+```
+
+**Fallback:** If SMTP is not configured (empty host), OTPs continue to be
+logged to stdout (development mode).
+
+### 8.5.4 Admin Provisioning
+
+- [ ] `CHANGALA_ADMIN_DIDS` env var — comma-separated list of DIDs to auto-provision
+      as admin on startup. Checked on boot, inserted into `memberships` with role `admin`.
+- [ ] `POST /xrpc/app.changala.ring.provisionAdmin` — admin provisioning via
+      shared secret (`CHANGALA_ADMIN_SECRET` env var). Allows bootstrapping the
+      first admin without DB access.
+
+### 8.5.5 Role Management Endpoints
+
+- [ ] `POST /xrpc/app.changala.ring.promoteRole` — admin endpoint to promote a user
+- [ ] `POST /xrpc/app.changala.ring.demoteRole` — admin endpoint to demote a user
+- [ ] Admin audit log table + `GET /xrpc/app.changala.ring.getAuditLog`
+
+### 8.5.6 Implementation Checklist
+
+**Migrations:**
+
+- [ ] `0010_email_domains.sql` — add `allowed_email_domains` config table (or use atrg.toml)
+- [ ] `0011_audit_log.sql` — `audit_log` table (actor_did, action, target_did, details, created_at)
+- [ ] `0012_membership_tracking.sql` — add `promoted_by`, `promoted_at` to memberships
+
+**Backend:**
+
+- [ ] Add `lettre` dependency to `Cargo.toml`
+- [ ] `src/email.rs` — SMTP email sender (connect, build message, send)
+- [ ] `SmtpConfig` struct in `main.rs` with env var overrides
+- [ ] Update `verifyEmail` handler: validate domain against allowlist, send OTP via SMTP
+- [ ] `CHANGALA_ALLOWED_EMAIL_DOMAINS` env var + `apply_env_overrides()`
+- [ ] `CHANGALA_SMTP_*` env vars + `apply_env_overrides()`
+- [ ] `CHANGALA_ADMIN_DIDS` startup provisioning logic
+- [ ] `CHANGALA_ADMIN_SECRET` + `provisionAdmin` endpoint
+- [ ] `promoteRole` / `demoteRole` handlers
+- [ ] Audit log writes on: role changes, bans, course creation, class rep assignment
+- [ ] Update `enrollStudent` to require institution membership (not just RequireAuth)
+- [ ] Update `addKeyword`, `createNote`, `proposeEdit` to require institution membership
+
+**Frontend:**
+
+- [ ] Email verification flow on `/dashboard` (prompt if logged in but no membership)
+- [ ] Role management UI in admin panel
+- [ ] Show membership status on profile page
+- [ ] Distinguish "logged in but not verified" vs "verified member" in UI
+
+**Ref:** See `RBAC.md` for the full permission matrix.
 
 ---
 

@@ -1,7 +1,38 @@
 # Changala — RBAC Reference
 
 > Role-Based Access Control specification for the Changala platform.
-> Covers role hierarchy, permission matrix, auth flow, ban system, bootstrapping, and proposed extensions.
+> Covers identity tiers, role hierarchy, permission matrix, auth flow,
+> email domain allowlists, ban system, bootstrapping, and proposed extensions.
+
+---
+
+## 0. Identity Tiers
+
+Before roles apply, a user falls into one of three identity tiers.
+AT Protocol login alone does **not** grant access to institution features.
+
+| Tier | Who | How obtained | Capabilities |
+|---|---|---|---|
+| **Public viewer** | Anyone (no login) | Visit the site | Read all world-public content: courses, sessions, notes, brain nodes, archives, search, graph |
+| **AT Proto user** | Logged in via AT Protocol OAuth | Click "Login" | Everything above, plus: create brain nodes, create links, vote on public content, view own notifications |
+| **Institution member** | AT Proto user + verified institution email | Verify email via OTP | Everything above, plus: enroll in courses, submit keywords, create notes, propose edits. Role (student/classRep/admin) determines further permissions. |
+
+A Bluesky user who logs in can browse and interact with the **brain layer**
+(world-public), but cannot enroll in courses or participate in academic
+sessions until they verify an institution email.
+
+### Email Domain Allowlist
+
+Each Ring instance restricts email verification to specific institution domains.
+Consumer email providers (Gmail, Yahoo, Outlook, etc.) are rejected.
+
+```
+CHANGALA_ALLOWED_EMAIL_DOMAINS=nitc.ac.in,mbcet.ac.in
+```
+
+The `verifyEmail` endpoint extracts the domain from the submitted email and
+checks it against this allowlist. If the domain is not in the list, the request
+is rejected with `400 InvalidRequest: "Email domain not allowed."`
 
 ---
 
