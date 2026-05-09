@@ -1,5 +1,5 @@
 const RING_URL =
-  import.meta.env.VITE_RING_URL || "https://changala.tail477f2f.ts.net";
+  import.meta.env.VITE_RING_URL || "https://changala-ring.tail477f2f.ts.net";
 const GLOBALVIEW_URL =
   import.meta.env.VITE_GLOBALVIEW_URL || "https://changala.tail477f2f.ts.net";
 

@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { ErrorMessage } from "../components/common/ErrorMessage";
 
 const RING_URL =
-  import.meta.env.VITE_RING_URL || "https://changala.tail477f2f.ts.net";
+  import.meta.env.VITE_RING_URL || "https://changala-ring.tail477f2f.ts.net";
 
 /**
  * Handles the OAuth callback redirect from /auth/complete.
