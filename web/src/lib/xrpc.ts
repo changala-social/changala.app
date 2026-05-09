@@ -1,3 +1,5 @@
+import { clearAuth } from "./auth";
+
 const RING_URL =
   import.meta.env.VITE_RING_URL || "https://changala-ring.tail477f2f.ts.net";
 const GLOBALVIEW_URL =
@@ -45,6 +47,10 @@ export async function xrpcGet<T>(
     const body = await res
       .json()
       .catch(() => ({ error: "UnknownError", message: res.statusText }));
+    // Auto-logout on expired/invalid session
+    if (res.status === 401) {
+      clearExpiredSession();
+    }
     throw new XrpcError(
       body.error || "UnknownError",
       body.message || res.statusText,
@@ -66,6 +72,9 @@ export async function xrpcPost<T>(nsid: string, body?: unknown): Promise<T> {
     const errBody = await res
       .json()
       .catch(() => ({ error: "UnknownError", message: res.statusText }));
+    if (res.status === 401) {
+      clearExpiredSession();
+    }
     throw new XrpcError(
       errBody.error || "UnknownError",
       errBody.message || res.statusText,
@@ -73,4 +82,15 @@ export async function xrpcPost<T>(nsid: string, body?: unknown): Promise<T> {
     );
   }
   return res.json();
+}
+
+/// Clear auth state and redirect to login when session expires.
+function clearExpiredSession() {
+  const token = localStorage.getItem("changala_access_token");
+  if (token) {
+    clearAuth();
+    // Redirect to login — use window.location to force full page reload
+    // so AuthContext re-reads the cleared localStorage.
+    window.location.href = "/login";
+  }
 }
