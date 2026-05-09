@@ -4,6 +4,8 @@
 
 use atrg_core::AppState;
 use axum::extract::State;
+use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
@@ -23,6 +25,10 @@ pub fn api() -> Router<AppState> {
             "/.well-known/oauth-protected-resource",
             get(well_known_oauth),
         )
+        // Cross-origin session handoff: atrg-auth callback sets an HttpOnly
+        // cookie and redirects here (same origin, so cookie is readable).
+        // We look up the session and redirect to the frontend with token params.
+        .route("/auth/complete", get(auth_complete))
         .merge(xrpc_routes())
 }
 
@@ -368,4 +374,58 @@ async fn well_known_oauth(State(state): State<AppState>) -> Json<serde_json::Val
         "scopes_supported": [config.scope],
         "bearer_methods_supported": ["header"]
     }))
+}
+
+/// `GET /auth/complete`
+///
+/// Cross-origin session handoff. After atrg-auth's `/auth/callback` sets the
+/// `atrg_session` HttpOnly cookie and redirects here (same origin → cookie is
+/// present), this handler:
+/// 1. Reads the `atrg_session` cookie
+/// 2. Looks up the session in the DB to get `did` and `handle`
+/// 3. Redirects to the frontend with `?token=...&did=...&handle=...` in the URL
+///
+/// This avoids the cross-origin cookie problem: the cookie is only used on the
+/// Ring's own domain, and the frontend receives the session info via URL params.
+async fn auth_complete(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    // 1. Extract atrg_session from the cookie header
+    let session_id = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                c.strip_prefix("atrg_session=")
+            })
+        });
+
+    let Some(session_id) = session_id else {
+        // No cookie — redirect to frontend login with error
+        let frontend = &state.config.auth.post_login_redirect;
+        return axum::response::Redirect::temporary(&format!("{}?error=no_session", frontend))
+            .into_response();
+    };
+
+    // 2. Look up session in DB
+    let session = atrg_auth::session::find_session(&state.db, session_id).await;
+
+    match session {
+        Ok(Some(s)) => {
+            // 3. Redirect to frontend with session info in URL
+            let frontend = &state.config.auth.post_login_redirect;
+            let redirect_url = format!(
+                "{}?token={}&did={}&handle={}",
+                frontend,
+                urlencoding::encode(session_id),
+                urlencoding::encode(&s.did),
+                urlencoding::encode(&s.handle),
+            );
+            axum::response::Redirect::temporary(&redirect_url).into_response()
+        }
+        _ => {
+            let frontend = &state.config.auth.post_login_redirect;
+            axum::response::Redirect::temporary(&format!("{}?error=invalid_session", frontend))
+                .into_response()
+        }
+    }
 }
