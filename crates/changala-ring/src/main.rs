@@ -300,7 +300,7 @@ async fn main() -> anyhow::Result<()> {
                     mcp_auth_middleware(pool, req, next)
                 }));
 
-        app_router = app_router.nest("/mcp", mcp_router);
+        app_router = app_router.nest_service("/mcp", mcp_router);
         tracing::info!("MCP server mounted at /mcp (API key auth required)");
     }
 
