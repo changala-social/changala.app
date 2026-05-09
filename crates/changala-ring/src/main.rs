@@ -284,13 +284,19 @@ async fn main() -> anyhow::Result<()> {
     //
     // NO .on_event() — the Ring is a write server. Firehose subscription
     // and event materialisation are handled by changala-globalview.
+    let mut app_router = routes::api();
+
+    // Mount MCP server on the Ring when enabled via env var
+    if std::env::var("CHANGALA_MCP_ENABLED").unwrap_or_default() == "true" {
+        app_router = app_router.nest_service("/mcp", changala_mcp::mcp_service());
+        tracing::info!("MCP server mounted at /mcp");
+    }
+
     AtrgApp::new()
         .with_db_pool(pg_pool)
-        // Use routes() instead of auth_router() — we override
-        // /client-metadata.json in our own router to fix client_uri.
         .with_auth_routes(atrg_auth::routes::routes())
         .with_cleanup_task(atrg_auth::routes::spawn_cleanup_task)
-        .mount(routes::api())
+        .mount(app_router)
         .run()
         .await
 }

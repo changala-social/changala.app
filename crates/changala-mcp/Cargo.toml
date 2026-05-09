@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 description = "Changala MCP server — AI-powered institution management"
 
+[lib]
+name = "changala_mcp"
+path = "src/lib.rs"
+
 [[bin]]
 name = "changala-mcp"
 path = "src/main.rs"

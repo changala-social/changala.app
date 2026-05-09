@@ -473,6 +473,7 @@ dependencies = [
  "atrg-xrpc",
  "axum",
  "base64",
+ "changala-mcp",
  "changala-shared",
  "chrono",
  "hex",
