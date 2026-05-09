@@ -3,6 +3,7 @@
 //! All 62 XRPC endpoints wired to real handler implementations.
 
 use atrg_core::AppState;
+use axum::extract::State;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
@@ -13,6 +14,9 @@ pub fn api() -> Router<AppState> {
     Router::new()
         .route("/", get(index))
         .route("/api/health", get(health))
+        // Override atrg's built-in client-metadata.json so that client_uri
+        // matches the client_id hostname (PDS validation requirement).
+        .route("/client-metadata.json", get(client_metadata))
         .merge(xrpc_routes())
 }
 
@@ -294,4 +298,43 @@ async fn index() -> Json<serde_json::Value> {
 
 async fn health() -> Json<serde_json::Value> {
     Json(json!({ "healthy": true }))
+}
+
+/// Custom client-metadata.json that derives `client_uri` from `client_id`.
+///
+/// The AT Protocol OAuth spec requires `client_uri` to use the same hostname
+/// as `client_id`, or localhost for development. atrg-auth's built-in handler
+/// uses `http://{host}:{port}` which produces `http://0.0.0.0:3000` — rejected
+/// by PDS validation. This override extracts the origin from `client_id`.
+async fn client_metadata(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = &state.config.auth;
+
+    // Derive client_uri from client_id: "https://example.com/client-metadata.json" → "https://example.com"
+    let client_uri = {
+        // Strip the path: find the third slash (after "https://host")
+        let id = &config.client_id;
+        match id.find("://") {
+            Some(scheme_end) => {
+                let after_scheme = &id[scheme_end + 3..];
+                match after_scheme.find('/') {
+                    Some(path_start) => id[..scheme_end + 3 + path_start].to_string(),
+                    None => id.clone(),
+                }
+            }
+            None => format!("http://{}:{}", state.config.app.host, state.config.app.port),
+        }
+    };
+
+    Json(json!({
+        "client_id": config.client_id,
+        "client_name": state.config.app.name,
+        "client_uri": client_uri,
+        "redirect_uris": [config.redirect_uri],
+        "scope": config.scope,
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "application_type": "web",
+        "token_endpoint_auth_method": "none",
+        "dpop_bound_access_tokens": true
+    }))
 }
