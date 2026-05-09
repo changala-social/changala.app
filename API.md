@@ -1447,6 +1447,7 @@ These override the framework-level `[app]`, `[auth]`, and `[database]` sections 
 | `ATRG_APP__ENVIRONMENT` | `[app] environment` | `development` or `production` | `production` |
 | `ATRG_AUTH__CLIENT_ID` | `[auth] client_id` | URL | `https://changala.app/client-metadata.json` |
 | `ATRG_AUTH__REDIRECT_URI` | `[auth] redirect_uri` | URL | `https://changala.app/auth/callback` |
+| `ATRG_AUTH__POST_LOGIN_REDIRECT` | `[auth] post_login_redirect` | URL | `https://changala-app.pages.dev/login` |
 | `ATRG_AUTH__SCOPE` | `[auth] scope` | string | `atproto transition:generic` |
 | `ATRG_DATABASE__URL` | `[database] url` | connection string | `postgres://user:pass@host:5432/changala` |
 
@@ -1463,6 +1464,15 @@ These override the `[changala]` section (business-logic database + S3 blob store
 | `CHANGALA_S3_ACCESS_KEY` | `[changala.s3] access_key` | `GK3a787017baa815a7` |
 | `CHANGALA_S3_SECRET_KEY` | `[changala.s3] secret_key` | `abc123...` |
 | `CHANGALA_S3_PATH_STYLE` | `[changala.s3] path_style` | `true` (default) or `false` |
+
+### Frontend Config (`VITE_*`)
+
+Set in Cloudflare Pages dashboard or `.env` file. Baked into the static build at compile time.
+
+| Environment Variable | Description | Example |
+|---|---|---|
+| `VITE_RING_URL` | Ring server base URL | `https://changala.tail477f2f.ts.net` |
+| `VITE_GLOBALVIEW_URL` | Global View base URL (same as Ring in MVP) | `https://changala.tail477f2f.ts.net` |
 
 ### Kubernetes / Docker Quick Reference
 
@@ -1488,9 +1498,10 @@ data:
   ATRG_APP__HOST: "0.0.0.0"
   ATRG_APP__PORT: "3000"
   ATRG_APP__ENVIRONMENT: "production"
-  ATRG_APP__CORS_ORIGINS: "https://changala.app"
+  ATRG_APP__CORS_ORIGINS: "https://changala-app.pages.dev,https://changala.app"
   ATRG_AUTH__CLIENT_ID: "https://changala.app/client-metadata.json"
   ATRG_AUTH__REDIRECT_URI: "https://changala.app/auth/callback"
+  ATRG_AUTH__POST_LOGIN_REDIRECT: "https://changala-app.pages.dev/login"
   ATRG_DATABASE__URL: "postgres://changala:pass@postgres:5432/changala"
   CHANGALA_S3_ENDPOINT: "http://garage:3900"
   CHANGALA_S3_BUCKET: "changala-blobs"

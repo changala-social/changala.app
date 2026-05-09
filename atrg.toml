@@ -7,9 +7,13 @@ cors_origins = ["http://localhost:5173"]
 environment = "development"
 
 [auth]
-client_id = "https://changala.tail477f2f.ts.net/client-metadata.json"
-redirect_uri = "https://changala.tail477f2f.ts.net/auth/callback"
-post_login_redirect = "https://changala-app.pages.dev/login"
+# Defaults for local dev. Override via env vars in production:
+#   ATRG_AUTH__CLIENT_ID
+#   ATRG_AUTH__REDIRECT_URI
+#   ATRG_AUTH__POST_LOGIN_REDIRECT  (requires atrg-core >=0.1.4, use atrg.toml for now)
+client_id = "http://localhost:3000/client-metadata.json"
+redirect_uri = "http://localhost:3000/auth/callback"
+post_login_redirect = "http://localhost:5173/login"
 scope = "atproto transition:generic"
 
 [database]

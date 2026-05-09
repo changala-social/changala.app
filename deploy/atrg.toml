@@ -1,16 +1,32 @@
+# ═══════════════════════════════════════════════════════════
+# Changala — production atrg.toml
+#
+# Every value below can be overridden by environment variables.
+# Use k8s ConfigMaps for non-sensitive values and Secrets for
+# sensitive ones. See API.md "Env Var Overrides" for the full
+# reference.
+#
+# Override format:
+#   [app]  fields  →  ATRG_APP__<FIELD>       (e.g. ATRG_APP__CORS_ORIGINS)
+#   [auth] fields  →  ATRG_AUTH__<FIELD>       (e.g. ATRG_AUTH__CLIENT_ID)
+#   [database]     →  ATRG_DATABASE__URL
+#   [changala]     →  CHANGALA_<FIELD>         (e.g. CHANGALA_DATABASE_URL)
+#   [changala.s3]  →  CHANGALA_S3_<FIELD>      (e.g. CHANGALA_S3_ENDPOINT)
+# ═══════════════════════════════════════════════════════════
+
 [app]
 name = "changala"
-host = "0.0.0.0"
-port = 3000
-secret_key = "CHANGE_ME_IN_PRODUCTION_use_openssl_rand_hex_32"
-cors_origins = []
-environment = "production"
+host = "0.0.0.0"                     # ATRG_APP__HOST
+port = 3000                           # ATRG_APP__PORT
+secret_key = "CHANGE_ME_IN_PRODUCTION_use_openssl_rand_hex_32"  # ATRG_APP__SECRET_KEY
+cors_origins = []                     # ATRG_APP__CORS_ORIGINS (comma-separated)
+environment = "production"            # ATRG_APP__ENVIRONMENT
 
 [auth]
-client_id = "https://changala.app/client-metadata.json"
-redirect_uri = "https://changala.app/auth/callback"
-post_login_redirect = "https://changala.app/login"
-scope = "atproto transition:generic"
+client_id = "https://changala.app/client-metadata.json"     # ATRG_AUTH__CLIENT_ID
+redirect_uri = "https://changala.app/auth/callback"          # ATRG_AUTH__REDIRECT_URI
+post_login_redirect = "https://changala.app/login"           # ATRG_AUTH__POST_LOGIN_REDIRECT
+scope = "atproto transition:generic"                         # ATRG_AUTH__SCOPE
 
 [database]
 url = "postgres://changala:changala@postgres:5432/changala"
