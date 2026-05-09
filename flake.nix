@@ -344,17 +344,17 @@
                     echo "==> atrg.toml updated with live PG + Garage credentials"
 
                     # ── 4. Build if needed ──────────────────────────────────────
-                    if [ ! -f "$PROJECT_DIR/target/debug/changala" ] && [ ! -f "$PROJECT_DIR/target/release/changala" ]; then
-                      echo "==> Building changala..."
-                      cargo build
+                    if [ ! -f "$PROJECT_DIR/target/debug/changala-ring" ] && [ ! -f "$PROJECT_DIR/target/release/changala-ring" ]; then
+                      echo "==> Building changala-ring..."
+                      cargo build -p changala-ring
                     fi
 
                     # ── 5. Run the server ───────────────────────────────────────
                     echo ""
-                    echo "==> Starting changala on http://127.0.0.1:3000"
+                    echo "==> Starting changala-ring on http://127.0.0.1:3000"
                     echo "    Press Ctrl-C to stop the server."
                     echo ""
-                    cargo run
+                    cargo run -p changala-ring
         '';
 
         changala-services-clean = pkgs.writeShellScriptBin "changala-services-clean" ''

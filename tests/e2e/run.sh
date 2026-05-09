@@ -379,31 +379,11 @@ run_test "isBanned" \
   "GET" "/xrpc/app.changala.ring.isBanned?did=did:plc:nobody" "" "200"
 
 # ── Unauthenticated Global View Reads ────────────────────────────────────────
-section "Unauthenticated Global View Reads"
-
-run_test "getCourseFeed" \
-  "GET" "/xrpc/app.changala.globalview.getCourseFeed?courseUri=at://fake/course/1" "" "200"
-
-run_test "getTrendingKeywords" \
-  "GET" "/xrpc/app.changala.globalview.getTrendingKeywords" "" "200"
-
-run_test "getTrendingBrainTags" \
-  "GET" "/xrpc/app.changala.globalview.getTrendingBrainTags" "" "200"
-
-run_test "getGlobalArchiveFeed" \
-  "GET" "/xrpc/app.changala.globalview.getGlobalArchiveFeed" "" "200"
-
-run_test "searchNotes" \
-  "GET" "/xrpc/app.changala.globalview.searchNotes?q=test" "" "200"
-
-run_test "searchCourses" \
-  "GET" "/xrpc/app.changala.globalview.searchCourses?q=test" "" "200"
-
-run_test "searchArchive" \
-  "GET" "/xrpc/app.changala.globalview.searchArchive?q=test" "" "200"
-
-run_test "searchBrainNodes" \
-  "GET" "/xrpc/app.changala.globalview.searchBrainNodes?q=test" "" "200"
+# NOTE: Global View endpoints are served by changala-aggregator, not changala-ring.
+# These tests are skipped in the Ring-only e2e suite.
+section "Unauthenticated Global View Reads (SKIPPED — Aggregator not running)"
+echo -e "  ${YELLOW}⚠  Global View endpoints are served by changala-aggregator${RESET}"
+echo -e "  ${YELLOW}⚠  This e2e suite only tests changala-ring${RESET}"
 
 # ── Seeded Data Tests ────────────────────────────────────────────────────────
 section "Seeded Data Tests"
@@ -429,20 +409,9 @@ if [ -f "$SEED_SQL" ]; then
   run_test "listSessions (seeded course)" \
     "GET" "/xrpc/app.changala.ring.listSessions?courseUri=at://did:web:ring.changala.local/app.changala.course/seed001" "" "200"
 
-  run_test "getNotes (seeded session)" \
-    "GET" "/xrpc/app.changala.globalview.getNotes?sessionUri=at://did:web:ring.changala.local/app.changala.session/seed001" "" "200"
-
-  run_test "getKeywordHistogram (seeded session)" \
-    "GET" "/xrpc/app.changala.globalview.getKeywordHistogram?sessionUri=at://did:web:ring.changala.local/app.changala.session/seed001" "" "200"
-
-  run_test "getBacklinks (seeded brain node)" \
-    "GET" "/xrpc/app.changala.globalview.getBacklinks?nodeUri=at://did:plc:brainuser/app.changala.brain.node/seed001" "" "200"
-
-  run_test "getNodeGraph (seeded brain node)" \
-    "GET" "/xrpc/app.changala.globalview.getNodeGraph?nodeUri=at://did:plc:brainuser/app.changala.brain.node/seed001" "" "200"
-
-  run_test "getNeighbours (seeded brain node)" \
-    "GET" "/xrpc/app.changala.globalview.getNeighbours?nodeUri=at://did:plc:brainuser/app.changala.brain.node/seed001" "" "200"
+  # NOTE: getNotes, getKeywordHistogram, getBacklinks, getNodeGraph, getNeighbours
+  # are globalview endpoints served by changala-aggregator (not running in this suite).
+  echo -e "  ${YELLOW}⚠  Skipping globalview seeded tests (Aggregator not running)${RESET}"
 else
   echo -e "  ${YELLOW}⚠  seed.sql not found at $SEED_SQL — skipping seeded data tests${RESET}"
 fi
