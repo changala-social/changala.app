@@ -399,9 +399,43 @@ pub fn mcp_service() -> rmcp::transport::streamable_http_server::StreamableHttpS
         StreamableHttpServerConfig, StreamableHttpService,
     };
 
+    // MCP host/origin allowlists from env vars.
+    // Empty = disabled (allow all). Comma-separated for multiple values.
+    //   CHANGALA_MCP_ALLOWED_HOSTS=changala-ring.example.com,localhost
+    //   CHANGALA_MCP_ALLOWED_ORIGINS=https://changala-app.pages.dev
+    let mut config = StreamableHttpServerConfig::default();
+
+    match std::env::var("CHANGALA_MCP_ALLOWED_HOSTS") {
+        Ok(v) if !v.is_empty() => {
+            let hosts: Vec<String> = v
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            config = config.with_allowed_hosts(hosts);
+        }
+        _ => {
+            config = config.disable_allowed_hosts();
+        }
+    }
+
+    match std::env::var("CHANGALA_MCP_ALLOWED_ORIGINS") {
+        Ok(v) if !v.is_empty() => {
+            let origins: Vec<String> = v
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            config = config.with_allowed_origins(origins);
+        }
+        _ => {
+            config = config.disable_allowed_origins();
+        }
+    }
+
     StreamableHttpService::new(
         || ChangalaServer::new().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
         Default::default(),
-        StreamableHttpServerConfig::default(),
+        config,
     )
 }
