@@ -197,7 +197,11 @@ pub async fn get_role(
 ) -> Result<Json<AppChangalaRingGetRoleOutput>, XrpcError> {
     let app = crate::state::get();
     let role =
-        sqlx::query_scalar::<_, String>("SELECT role FROM memberships WHERE did = $1 LIMIT 1")
+        sqlx::query_scalar::<_, String>(
+            "SELECT role FROM memberships WHERE did = $1 \
+             ORDER BY CASE role WHEN 'admin' THEN 1 WHEN 'classRep' THEN 2 WHEN 'student' THEN 3 ELSE 4 END \
+             LIMIT 1",
+        )
             .bind(&params.did)
             .fetch_optional(&app.db)
             .await
