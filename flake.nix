@@ -76,25 +76,20 @@
         # Build dependencies (cached separately)
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-        # Build the Ring binary
-        changala-ring = craneLib.buildPackage (
+        # Build the full workspace (feature unification requires all members
+        # to be compiled together — atrg-auth's internal atrg-db dep has
+        # default-features=true which enables sqlite+postgres variants)
+        changala-workspace = craneLib.buildPackage (
           commonArgs
           // {
             inherit cargoArtifacts;
-            pname = "changala-ring";
-            cargoExtraArgs = "--package changala-ring";
+            pname = "changala";
           }
         );
 
-        # Build the Aggregator binary
-        changala-aggregator = craneLib.buildPackage (
-          commonArgs
-          // {
-            inherit cargoArtifacts;
-            pname = "changala-aggregator";
-            cargoExtraArgs = "--package changala-aggregator";
-          }
-        );
+        # Extract individual binaries from the workspace build
+        changala-ring = changala-workspace;
+        changala-aggregator = changala-workspace;
 
         # --- Service scripts ---
 

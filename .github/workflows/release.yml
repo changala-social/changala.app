@@ -63,13 +63,11 @@ jobs:
       - name: Extract binaries for release
         run: |
           mkdir -p dist
-          RING_PATH=$(nix build .#changala-ring --no-link --print-out-paths)
-          cp "$RING_PATH/bin/changala-ring" dist/changala-ring-linux-${{ matrix.arch }}
-          chmod +x dist/changala-ring-linux-${{ matrix.arch }}
-
-          AGG_PATH=$(nix build .#changala-aggregator --no-link --print-out-paths)
-          cp "$AGG_PATH/bin/changala-aggregator" dist/changala-aggregator-linux-${{ matrix.arch }}
-          chmod +x dist/changala-aggregator-linux-${{ matrix.arch }}
+          # Both binaries are in the same workspace build output
+          WS_PATH=$(nix build .#changala-ring --no-link --print-out-paths)
+          cp "$WS_PATH/bin/changala-ring" dist/changala-ring-linux-${{ matrix.arch }}
+          cp "$WS_PATH/bin/changala-aggregator" dist/changala-aggregator-linux-${{ matrix.arch }}
+          chmod +x dist/*
 
       - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
