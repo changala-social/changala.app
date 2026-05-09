@@ -284,26 +284,31 @@ async fn main() -> anyhow::Result<()> {
     //
     // NO .on_event() — the Ring is a write server. Firehose subscription
     // and event materialisation are handled by changala-globalview.
-    let mut app_router = routes::api();
-
     // Mount MCP server on the Ring when enabled via env var
-    // Auth is handled by the MCP server internally — each tool call
-    // authenticates against Ring XRPC endpoints using the bootstrap API key.
-    // The MCP transport endpoint itself is protected by:
-    // 1. CHANGALA_MCP_ALLOWED_HOSTS env var (host header validation)
-    // 2. Network-level access control (Tailscale/k8s ingress)
-    if std::env::var("CHANGALA_MCP_ENABLED").unwrap_or_default() == "true" {
-        app_router = app_router.nest_service("/mcp", changala_mcp::mcp_service());
-        tracing::info!("MCP server mounted at /mcp");
+    // Note: We can't use nest_service on app_router because AtrgApp::mount()
+    // uses .merge() which panics with nested services in axum 0.8.
+    // Instead, we pass MCP as a separate router to AtrgApp.
+    let mcp_enabled = std::env::var("CHANGALA_MCP_ENABLED").unwrap_or_default() == "true";
+    if mcp_enabled {
+        tracing::info!("MCP server will be mounted at /mcp");
     }
 
-    AtrgApp::new()
+    let app_router = routes::api();
+
+    let mut builder = AtrgApp::new()
         .with_db_pool(pg_pool)
         .with_auth_routes(atrg_auth::routes::routes())
         .with_cleanup_task(atrg_auth::routes::spawn_cleanup_task)
-        .mount(app_router)
-        .run()
-        .await
+        .mount(app_router);
+
+    if mcp_enabled {
+        let mcp_router = axum::Router::<atrg_core::AppState>::new()
+            .route_service("/mcp", changala_mcp::mcp_service())
+            .route_service("/mcp/", changala_mcp::mcp_service());
+        builder = builder.mount(mcp_router);
+    }
+
+    builder.run().await
 }
 
 /// Run changala's business-logic migrations using a private tracking table.
