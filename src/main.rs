@@ -222,8 +222,8 @@ async fn main() -> anyhow::Result<()> {
     if !config.admin_dids.is_empty() {
         for did in &config.admin_dids {
             let result = sqlx::query(
-                "INSERT INTO memberships (did, institution_did, institution_domain, role, verified_at) \
-                 VALUES ($1, 'did:web:system', 'system', 'admin', $2) \
+                "INSERT INTO memberships (did, institution_did, institution_domain, role, verified_email, verified_at) \
+                 VALUES ($1, 'did:web:system', 'system', 'admin', 'system-provisioned', $2) \
                  ON CONFLICT (did, institution_did) DO UPDATE SET role = 'admin'"
             )
             .bind(did)
