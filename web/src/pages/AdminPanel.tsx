@@ -12,13 +12,14 @@ import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { ErrorMessage } from "../components/common/ErrorMessage";
 import type { ListBansResponse, Visibility } from "../generated/types";
 
-type AdminTab = "courses" | "moderation" | "archive" | "roles";
+type AdminTab = "courses" | "moderation" | "archive" | "roles" | "apikeys";
 
 const TAB_LABELS: Record<AdminTab, string> = {
   courses: "Course Management",
   moderation: "Moderation",
   archive: "Archive",
   roles: "Roles",
+  apikeys: "API Keys",
 };
 
 // ── Sub-components ───────────────────────────────────────────
@@ -827,7 +828,232 @@ function RoleManagementSection() {
   );
 }
 
-// ── Main AdminPanel ──────────────────────────────────────────
+// ── API Keys Section ─────────────────────────────────────────────
+
+function ApiKeysSection() {
+  const [name, setName] = useState("");
+  const [scopes, setScopes] = useState("admin:*");
+  const [expiryDays, setExpiryDays] = useState("");
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const createKey = useXrpcMutation<
+    {
+      key: string;
+      prefix: string;
+      name: string;
+      scopes: string[];
+      expiresAt: string | null;
+    },
+    { name: string; scopes: string[]; expires_in_days?: number }
+  >("app.changala.ring.createApiKey");
+
+  const revokeKey = useXrpcMutation<
+    { revoked: boolean; prefix: string },
+    { prefix: string }
+  >("app.changala.ring.revokeApiKey");
+
+  const {
+    data: keysData,
+    isLoading: keysLoading,
+    refetch: refetchKeys,
+  } = useXrpcQuery<{
+    keys: {
+      prefix: string;
+      did: string;
+      name: string;
+      scopes: string[];
+      expiresAt: string | null;
+      createdAt: string;
+      lastUsedAt: string | null;
+    }[];
+  }>("app.changala.ring.listApiKeys");
+
+  const handleCreate = (e: FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    const scopeList = scopes
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const body: { name: string; scopes: string[]; expires_in_days?: number } = {
+      name: name.trim(),
+      scopes: scopeList,
+    };
+    if (expiryDays.trim()) {
+      body.expires_in_days = parseInt(expiryDays, 10);
+    }
+    createKey.mutate(body, {
+      onSuccess: (data) => {
+        setNewKey(data.key);
+        setCopied(false);
+        setName("");
+        refetchKeys();
+      },
+    });
+  };
+
+  const handleCopy = () => {
+    if (newKey) {
+      navigator.clipboard.writeText(newKey);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    }
+  };
+
+  const handleRevoke = (prefix: string) => {
+    if (!confirm(`Revoke API key ${prefix}...?`)) return;
+    revokeKey.mutate({ prefix }, { onSuccess: () => refetchKeys() });
+  };
+
+  const keys = keysData?.keys ?? [];
+
+  return (
+    <div className="space-y-6">
+      {/* Create new key */}
+      <div className="rounded-lg border border-border bg-surface p-6">
+        <h2 className="text-lg font-semibold text-text mb-4">Create API Key</h2>
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">
+              Key Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="MCP Admin Key"
+              className="w-full rounded-md border border-border bg-surface-alt px-3 py-2 text-sm text-text"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">
+              Scopes (comma-separated)
+            </label>
+            <input
+              type="text"
+              value={scopes}
+              onChange={(e) => setScopes(e.target.value)}
+              placeholder="admin:*"
+              className="w-full rounded-md border border-border bg-surface-alt px-3 py-2 text-sm text-text"
+            />
+            <p className="text-xs text-text-muted mt-1">
+              Available: admin:*, admin:courses, admin:sessions,
+              admin:moderation, admin:roles, write:notes, write:brain, read:*
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">
+              Expires in (days, optional)
+            </label>
+            <input
+              type="number"
+              value={expiryDays}
+              onChange={(e) => setExpiryDays(e.target.value)}
+              placeholder="Leave empty for no expiry"
+              className="w-full rounded-md border border-border bg-surface-alt px-3 py-2 text-sm text-text"
+            />
+          </div>
+          {createKey.error && (
+            <ErrorMessage message={createKey.error.message} />
+          )}
+          <button
+            type="submit"
+            disabled={!name.trim() || createKey.isPending}
+            className="rounded-md bg-academic px-4 py-2 text-sm font-medium text-white hover:bg-academic/90 disabled:opacity-50 transition"
+          >
+            {createKey.isPending ? "Creating..." : "Create Key"}
+          </button>
+        </form>
+      </div>
+
+      {/* Newly created key (show once) */}
+      {newKey && (
+        <div className="rounded-lg border-2 border-live bg-live/5 p-6">
+          <h3 className="text-sm font-semibold text-live mb-2">
+            ⚠ Copy this key now — it won't be shown again
+          </h3>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 bg-surface rounded px-3 py-2 text-sm font-mono text-text break-all select-all">
+              {newKey}
+            </code>
+            <button
+              onClick={handleCopy}
+              className="shrink-0 rounded-md bg-live px-3 py-2 text-sm font-medium text-white hover:bg-live/90 transition"
+            >
+              {copied ? "✓ Copied" : "Copy"}
+            </button>
+          </div>
+          <button
+            onClick={() => setNewKey(null)}
+            className="mt-3 text-xs text-text-muted hover:text-text"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Existing keys */}
+      <div className="rounded-lg border border-border bg-surface p-6">
+        <h2 className="text-lg font-semibold text-text mb-4">Active Keys</h2>
+        {keysLoading ? (
+          <LoadingSpinner size="sm" />
+        ) : keys.length === 0 ? (
+          <p className="text-sm text-text-muted">No API keys yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {keys.map((k) => (
+              <div
+                key={k.prefix}
+                className="flex items-center justify-between p-3 rounded border border-border bg-surface-alt"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm font-mono text-text">
+                      {k.prefix}...
+                    </code>
+                    <span className="text-sm font-medium text-text">
+                      {k.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-text-muted">
+                    <span>
+                      Scopes:{" "}
+                      {Array.isArray(k.scopes)
+                        ? k.scopes.join(", ")
+                        : String(k.scopes)}
+                    </span>
+                    <span>
+                      Created {new Date(k.createdAt).toLocaleDateString()}
+                    </span>
+                    {k.lastUsedAt && (
+                      <span>
+                        Last used {new Date(k.lastUsedAt).toLocaleDateString()}
+                      </span>
+                    )}
+                    {k.expiresAt && (
+                      <span className="text-rescheduled">
+                        Expires {new Date(k.expiresAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleRevoke(k.prefix)}
+                  className="shrink-0 text-xs px-3 py-1 rounded bg-cancelled/10 text-cancelled hover:bg-cancelled/20 transition"
+                >
+                  Revoke
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main AdminPanel ──────────────────────────────────────────────
 
 export default function AdminPanel() {
   const { isAuthenticated } = useAuth();
@@ -879,6 +1105,8 @@ export default function AdminPanel() {
       {activeTab === "archive" && <ArchiveSection />}
 
       {activeTab === "roles" && <RoleManagementSection />}
+
+      {activeTab === "apikeys" && <ApiKeysSection />}
     </div>
   );
 }
