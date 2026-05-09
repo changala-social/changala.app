@@ -287,21 +287,14 @@ async fn main() -> anyhow::Result<()> {
     let mut app_router = routes::api();
 
     // Mount MCP server on the Ring when enabled via env var
+    // Auth is handled by the MCP server internally — each tool call
+    // authenticates against Ring XRPC endpoints using the bootstrap API key.
+    // The MCP transport endpoint itself is protected by:
+    // 1. CHANGALA_MCP_ALLOWED_HOSTS env var (host header validation)
+    // 2. Network-level access control (Tailscale/k8s ingress)
     if std::env::var("CHANGALA_MCP_ENABLED").unwrap_or_default() == "true" {
-        let mcp_service = changala_mcp::mcp_service();
-
-        // Wrap MCP with API key auth middleware
-        let mcp_auth_pool = pg_pool.clone();
-        let mcp_router =
-            axum::Router::new()
-                .nest_service("/", mcp_service)
-                .layer(axum::middleware::from_fn(move |req, next| {
-                    let pool = mcp_auth_pool.clone();
-                    mcp_auth_middleware(pool, req, next)
-                }));
-
-        app_router = app_router.nest_service("/mcp", mcp_router);
-        tracing::info!("MCP server mounted at /mcp (API key auth required)");
+        app_router = app_router.nest_service("/mcp", changala_mcp::mcp_service());
+        tracing::info!("MCP server mounted at /mcp");
     }
 
     AtrgApp::new()
@@ -381,46 +374,4 @@ async fn run_changala_migrations(pool: &PgPool) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-/// Middleware that validates API key auth for the MCP endpoint.
-/// Checks `Authorization: Bearer chg_xxx` against the api_keys table.
-async fn mcp_auth_middleware(
-    pool: sqlx::PgPool,
-    req: axum::http::Request<axum::body::Body>,
-    next: axum::middleware::Next,
-) -> axum::response::Response {
-    use axum::http::StatusCode;
-    use axum::response::IntoResponse;
-
-    let auth_header = req
-        .headers()
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-        .map(|s| s.trim().to_string());
-
-    let Some(api_key) = auth_header else {
-        return (
-            StatusCode::UNAUTHORIZED,
-            axum::Json(serde_json::json!({
-                "error": "unauthorized",
-                "message": "MCP requires an API key. Pass Authorization: Bearer chg_xxx"
-            })),
-        )
-            .into_response();
-    };
-
-    // Validate the key against the api_keys table
-    match handlers::apikeys::find_api_key(&pool, &api_key).await {
-        Ok(Some(_)) => next.run(req).await,
-        _ => (
-            StatusCode::FORBIDDEN,
-            axum::Json(serde_json::json!({
-                "error": "forbidden",
-                "message": "Invalid or expired API key"
-            })),
-        )
-            .into_response(),
-    }
 }
