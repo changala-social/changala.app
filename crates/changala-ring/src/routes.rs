@@ -40,9 +40,6 @@ pub fn api() -> Router<AppState> {
 /// and injects a synthetic session so `RequireAuth` works transparently.
 fn xrpc_routes() -> Router<AppState> {
     atrg_xrpc::xrpc_router()
-        .layer(axum::middleware::from_fn(
-            crate::api_key_auth::api_key_auth_middleware,
-        ))
         // ── Identity ────────────────────────────────────────
         .route(
             "/xrpc/app.changala.ring.verifyEmail",
@@ -255,6 +252,11 @@ fn xrpc_routes() -> Router<AppState> {
             "/xrpc/app.changala.ring.deleteLink",
             post(handlers::brain::delete_link),
         )
+        // ── API key → session bridge ────────────────────────
+        // Must be LAST: axum layers only wrap routes added before them.
+        .layer(axum::middleware::from_fn(
+            crate::api_key_auth::api_key_auth_middleware,
+        ))
 }
 
 async fn index() -> Json<serde_json::Value> {
