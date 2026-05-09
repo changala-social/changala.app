@@ -76,11 +76,23 @@
         # Build dependencies (cached separately)
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-        # The main package
-        changala = craneLib.buildPackage (
+        # Build the Ring binary
+        changala-ring = craneLib.buildPackage (
           commonArgs
           // {
             inherit cargoArtifacts;
+            pname = "changala-ring";
+            cargoExtraArgs = "--package changala-ring";
+          }
+        );
+
+        # Build the Aggregator binary
+        changala-aggregator = craneLib.buildPackage (
+          commonArgs
+          // {
+            inherit cargoArtifacts;
+            pname = "changala-aggregator";
+            cargoExtraArgs = "--package changala-aggregator";
           }
         );
 
@@ -367,9 +379,10 @@
       in
       {
         packages = {
-          default = changala;
+          default = changala-ring;
           inherit
-            changala
+            changala-ring
+            changala-aggregator
             changala-services-start
             changala-services-stop
             changala-services-clean
@@ -381,7 +394,8 @@
             name = "ghcr.io/changala-social/changala.app";
             tag = "latest";
             contents = [
-              changala
+              changala-ring
+              changala-aggregator
               pkgs.cacert
               pkgs.tini
               pkgs.dockerTools.fakeNss # /etc/nsswitch.conf + passwd/group for glibc DNS
@@ -400,7 +414,7 @@
                 "${pkgs.tini}/bin/tini"
                 "--"
               ];
-              Cmd = [ "${changala}/bin/changala" ];
+              Cmd = [ "${changala-ring}/bin/changala-ring" ];
               ExposedPorts = {
                 "3000/tcp" = { };
               };

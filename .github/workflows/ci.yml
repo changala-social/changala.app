@@ -40,16 +40,16 @@ jobs:
 
       # ── Checks ───────────────────────────────────────────────
       - name: Check formatting
-        run: nix develop --command cargo fmt --check
+        run: nix develop --command cargo fmt --all --check
 
       - name: Clippy
-        run: nix develop --command cargo clippy --all-targets -- -D warnings
+        run: nix develop --command cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Unit tests
-        run: nix develop --command cargo test
+        run: nix develop --command cargo test --workspace
 
       - name: Build
-        run: nix develop --command cargo build
+        run: nix develop --command cargo build --workspace
 
       - name: E2E tests
         run: |

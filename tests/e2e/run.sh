@@ -99,7 +99,7 @@ cleanup() {
   section "Cleanup"
 
   if [ -n "${CHANGALA_PID:-}" ] && kill -0 "$CHANGALA_PID" 2>/dev/null; then
-    echo "  Stopping changala server (PID $CHANGALA_PID)..."
+    echo "  Stopping changala-ring server (PID $CHANGALA_PID)..."
     kill "$CHANGALA_PID" 2>/dev/null || true
     wait "$CHANGALA_PID" 2>/dev/null || true
   fi
@@ -139,16 +139,16 @@ cleanup() {
 trap cleanup EXIT
 
 # ── Find changala binary ──────────────────────────────────────────────────────
-section "Locating changala binary"
+section "Locating changala-ring binary"
 
 if [ -n "${CHANGALA_BIN:-}" ]; then
   CHANGALA_BIN="$CHANGALA_BIN"
-elif [ -f "$SCRIPT_DIR/../../target/release/changala" ]; then
-  CHANGALA_BIN="$SCRIPT_DIR/../../target/release/changala"
-elif [ -f "$SCRIPT_DIR/../../target/debug/changala" ]; then
-  CHANGALA_BIN="$SCRIPT_DIR/../../target/debug/changala"
+elif [ -f "$SCRIPT_DIR/../../target/release/changala-ring" ]; then
+  CHANGALA_BIN="$SCRIPT_DIR/../../target/release/changala-ring"
+elif [ -f "$SCRIPT_DIR/../../target/debug/changala-ring" ]; then
+  CHANGALA_BIN="$SCRIPT_DIR/../../target/debug/changala-ring"
 else
-  echo -e "${RED}ERROR: Cannot find changala binary.${RESET}"
+  echo -e "${RED}ERROR: Cannot find changala-ring binary.${RESET}"
   echo "  Set CHANGALA_BIN or run 'cargo build' first."
   exit 1
 fi
@@ -294,13 +294,17 @@ EOF
 
 echo "  Written to $TMPDIR/atrg.toml"
 
-# ── Copy and start changala ──────────────────────────────────────────────────
-section "Starting changala server"
+# Copy Ring migrations so the binary can find them
+cp -r "$SCRIPT_DIR/../../crates/changala-ring/ring_migrations" "$TMPDIR/ring_migrations"
+echo "  Copied ring_migrations to $TMPDIR/ring_migrations"
 
-cp "$CHANGALA_BIN" "$TMPDIR/changala"
+# ── Copy and start changala-ring ─────────────────────────────────────────────
+section "Starting changala-ring server"
+
+cp "$CHANGALA_BIN" "$TMPDIR/changala-ring"
 
 cd "$TMPDIR"
-./changala > "$TMPDIR/changala.log" 2>&1 &
+./changala-ring > "$TMPDIR/changala.log" 2>&1 &
 CHANGALA_PID=$!
 echo "  PID: $CHANGALA_PID"
 
@@ -311,7 +315,7 @@ for i in $(seq 1 30); do
     break
   fi
   if ! kill -0 "$CHANGALA_PID" 2>/dev/null; then
-    echo -e "${RED}ERROR: changala exited prematurely${RESET}"
+    echo -e "${RED}ERROR: changala-ring exited prematurely${RESET}"
     echo "  Log tail:"
     tail -20 "$TMPDIR/changala.log"
     exit 1
@@ -320,7 +324,7 @@ for i in $(seq 1 30); do
 done
 
 if ! curl -sf http://127.0.0.1:13000/api/health >/dev/null 2>&1; then
-  echo -e "${RED}ERROR: changala failed to become healthy${RESET}"
+  echo -e "${RED}ERROR: changala-ring failed to become healthy${RESET}"
   echo "  Log tail:"
   tail -20 "$TMPDIR/changala.log"
   exit 1

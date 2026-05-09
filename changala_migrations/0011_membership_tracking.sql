@@ -1,2 +1,0 @@
-ALTER TABLE memberships ADD COLUMN IF NOT EXISTS promoted_by TEXT;
-ALTER TABLE memberships ADD COLUMN IF NOT EXISTS promoted_at TEXT;

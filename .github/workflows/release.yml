@@ -25,10 +25,8 @@ jobs:
         include:
           - os: ubuntu-latest
             arch: amd64
-            artifact: changala-linux-amd64
           - os: ubuntu-24.04-arm
             arch: arm64
-            artifact: changala-linux-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -62,18 +60,22 @@ jobs:
           docker tag "$REPO:latest" "$REPO:$TAG-${{ matrix.arch }}"
           docker push "$REPO:$TAG-${{ matrix.arch }}"
 
-      - name: Extract binary for release
+      - name: Extract binaries for release
         run: |
           mkdir -p dist
-          BIN_PATH=$(nix build .#changala --no-link --print-out-paths)
-          cp "$BIN_PATH/bin/changala" dist/${{ matrix.artifact }}
-          chmod +x dist/${{ matrix.artifact }}
+          RING_PATH=$(nix build .#changala-ring --no-link --print-out-paths)
+          cp "$RING_PATH/bin/changala-ring" dist/changala-ring-linux-${{ matrix.arch }}
+          chmod +x dist/changala-ring-linux-${{ matrix.arch }}
 
-      - name: Upload binary artifact
+          AGG_PATH=$(nix build .#changala-aggregator --no-link --print-out-paths)
+          cp "$AGG_PATH/bin/changala-aggregator" dist/changala-aggregator-linux-${{ matrix.arch }}
+          chmod +x dist/changala-aggregator-linux-${{ matrix.arch }}
+
+      - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          name: changala-linux-${{ matrix.arch }}
+          path: dist/
 
   # ── Multi-arch manifest ────────────────────────────────────
   manifest:
