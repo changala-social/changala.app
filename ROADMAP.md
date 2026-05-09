@@ -361,6 +361,8 @@ logged to stdout (development mode).
 
 ### 8.5.5 Role Management Endpoints
 
+Support for MCP
+
 - [ ] `POST /xrpc/app.changala.ring.promoteRole` — admin endpoint to promote a user
 - [ ] `POST /xrpc/app.changala.ring.demoteRole` — admin endpoint to demote a user
 - [ ] Admin audit log table + `GET /xrpc/app.changala.ring.getAuditLog`

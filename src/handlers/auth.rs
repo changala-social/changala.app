@@ -9,7 +9,7 @@ use sqlx::PgPool;
 /// Check if a DID is banned. Returns Err(Forbidden) if actively banned.
 pub async fn check_not_banned(db: &PgPool, did: &str) -> Result<(), XrpcError> {
     let row = sqlx::query_as::<_, (i64,)>(
-        "SELECT 1 FROM bans WHERE target_did = $1 AND (permanent = TRUE OR expires_at > NOW()::TEXT)",
+        "SELECT 1::BIGINT FROM bans WHERE target_did = $1 AND (permanent = TRUE OR expires_at > NOW()::TEXT)",
     )
     .bind(did)
     .fetch_optional(db)
@@ -65,16 +65,17 @@ pub async fn require_role(db: &PgPool, did: &str, required: &str) -> Result<(), 
 /// Check if a DID is enrolled in a specific course.
 #[allow(dead_code)]
 pub async fn require_enrolled(db: &PgPool, did: &str, course_uri: &str) -> Result<(), XrpcError> {
-    let row =
-        sqlx::query_as::<_, (i64,)>("SELECT 1 FROM enrollments WHERE did = $1 AND course_uri = $2")
-            .bind(did)
-            .bind(course_uri)
-            .fetch_optional(db)
-            .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("Enrollment check failed: {e}"),
-            })?;
+    let row = sqlx::query_as::<_, (i64,)>(
+        "SELECT 1::BIGINT FROM enrollments WHERE did = $1 AND course_uri = $2",
+    )
+    .bind(did)
+    .bind(course_uri)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Enrollment check failed: {e}"),
+    })?;
 
     if row.is_none() {
         Err(XrpcError {
@@ -117,16 +118,17 @@ pub async fn require_class_rep_or_admin(
     course_uri: &str,
 ) -> Result<(), XrpcError> {
     // Check if class rep
-    let is_rep =
-        sqlx::query_as::<_, (i64,)>("SELECT 1 FROM courses WHERE uri = $1 AND class_rep_did = $2")
-            .bind(course_uri)
-            .bind(did)
-            .fetch_optional(db)
-            .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("Class rep check failed: {e}"),
-            })?;
+    let is_rep = sqlx::query_as::<_, (i64,)>(
+        "SELECT 1::BIGINT FROM courses WHERE uri = $1 AND class_rep_did = $2",
+    )
+    .bind(course_uri)
+    .bind(did)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("Class rep check failed: {e}"),
+    })?;
 
     if is_rep.is_some() {
         return Ok(());

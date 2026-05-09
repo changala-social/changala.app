@@ -148,7 +148,7 @@ pub async fn is_banned(
 ) -> Result<Json<AppChangalaRingIsBannedOutput>, XrpcError> {
     let app = crate::state::get();
     let row = sqlx::query_as::<_, (bool, Option<String>)>(
-        "SELECT 1, expires_at FROM bans WHERE target_did = $1 AND (permanent = TRUE OR expires_at > NOW()::TEXT)"
+        "SELECT 1::BIGINT, expires_at FROM bans WHERE target_did = $1 AND (permanent = TRUE OR expires_at > NOW()::TEXT)"
     )
     .bind(&params.did)
     .fetch_optional(&app.db)

@@ -228,14 +228,15 @@ pub async fn create_session(
     auth::require_class_rep_or_admin(&app.db, &session.did, &input.course_uri).await?;
 
     // Verify the course exists
-    let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = $1")
-        .bind(&input.course_uri)
-        .fetch_optional(&app.db)
-        .await
-        .map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("database error: {e}"),
-        })?;
+    let course_exists: Option<(i64,)> =
+        sqlx::query_as("SELECT 1::BIGINT FROM courses WHERE uri = $1")
+            .bind(&input.course_uri)
+            .fetch_optional(&app.db)
+            .await
+            .map_err(|e| XrpcError {
+                name: XrpcErrorName::InternalServerError,
+                message: format!("database error: {e}"),
+            })?;
 
     if course_exists.is_none() {
         return Err(XrpcError {

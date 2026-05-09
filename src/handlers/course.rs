@@ -348,14 +348,15 @@ pub async fn enroll_student(
     let now = Utc::now().to_rfc3339();
 
     // Verify the course exists
-    let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = $1")
-        .bind(&input.course_uri)
-        .fetch_optional(&app.db)
-        .await
-        .map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("database error: {e}"),
-        })?;
+    let course_exists: Option<(i64,)> =
+        sqlx::query_as("SELECT 1::BIGINT FROM courses WHERE uri = $1")
+            .bind(&input.course_uri)
+            .fetch_optional(&app.db)
+            .await
+            .map_err(|e| XrpcError {
+                name: XrpcErrorName::InternalServerError,
+                message: format!("database error: {e}"),
+            })?;
 
     if course_exists.is_none() {
         return Err(XrpcError {
@@ -477,14 +478,15 @@ pub async fn assign_class_rep(
     auth::require_role(&app.db, &session.did, "admin").await?;
 
     // Verify the course exists
-    let course_exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM courses WHERE uri = $1")
-        .bind(&input.course_uri)
-        .fetch_optional(&app.db)
-        .await
-        .map_err(|e| XrpcError {
-            name: XrpcErrorName::InternalServerError,
-            message: format!("database error: {e}"),
-        })?;
+    let course_exists: Option<(i64,)> =
+        sqlx::query_as("SELECT 1::BIGINT FROM courses WHERE uri = $1")
+            .bind(&input.course_uri)
+            .fetch_optional(&app.db)
+            .await
+            .map_err(|e| XrpcError {
+                name: XrpcErrorName::InternalServerError,
+                message: format!("database error: {e}"),
+            })?;
 
     if course_exists.is_none() {
         return Err(XrpcError {
