@@ -434,7 +434,7 @@ pub fn mcp_service() -> rmcp::transport::streamable_http_server::StreamableHttpS
     }
 
     StreamableHttpService::new(
-        || ChangalaServer::new().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+        || ChangalaServer::new().map_err(|e| std::io::Error::other(e)),
         Default::default(),
         config,
     )
