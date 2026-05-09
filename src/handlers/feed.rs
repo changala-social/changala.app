@@ -701,7 +701,7 @@ pub async fn get_followed_enrollments(
     let sql = "SELECT e.course_uri, c.title, COUNT(*) as cnt \
                FROM enrollments e \
                JOIN courses c ON e.course_uri = c.uri \
-               GROUP BY e.course_uri \
+               GROUP BY e.course_uri, c.title \
                ORDER BY cnt DESC \
                LIMIT $1";
 
