@@ -193,6 +193,19 @@ fn xrpc_routes() -> Router<AppState> {
             "/xrpc/app.changala.ring.getAuditLog",
             get(handlers::admin::get_audit_log),
         )
+        // ── API Keys ────────────────────────────────────────
+        .route(
+            "/xrpc/app.changala.ring.createApiKey",
+            post(handlers::apikeys::create_api_key),
+        )
+        .route(
+            "/xrpc/app.changala.ring.listApiKeys",
+            get(handlers::apikeys::list_api_keys),
+        )
+        .route(
+            "/xrpc/app.changala.ring.revokeApiKey",
+            post(handlers::apikeys::revoke_api_key),
+        )
         // ── Archive ─────────────────────────────────────────
         .route(
             "/xrpc/app.changala.ring.initiateArchive",

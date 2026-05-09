@@ -237,6 +237,47 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Auto-provision bootstrap API key from env var
+    if let Ok(bootstrap_key) = std::env::var("CHANGALA_BOOTSTRAP_API_KEY") {
+        if !bootstrap_key.is_empty() {
+            let hash = {
+                use sha2::{Digest, Sha256};
+                format!(
+                    "sha256-{}",
+                    hex::encode(Sha256::digest(bootstrap_key.as_bytes()))
+                )
+            };
+            let prefix: String = bootstrap_key.chars().take(12).collect();
+            let now = chrono::Utc::now().to_rfc3339();
+            // Find the first admin DID for this key
+            let admin_did = config
+                .admin_dids
+                .first()
+                .map(|s| s.as_str())
+                .unwrap_or("did:web:system");
+            let result = sqlx::query(
+                "INSERT INTO api_keys (key_hash, key_prefix, did, name, scopes, created_at) \
+                 VALUES ($1, $2, $3, 'Bootstrap Key', '[\"admin:*\"]', $4) \
+                 ON CONFLICT (key_hash) DO NOTHING",
+            )
+            .bind(&hash)
+            .bind(&prefix)
+            .bind(admin_did)
+            .bind(&now)
+            .execute(&pg_pool)
+            .await;
+            match result {
+                Ok(r) if r.rows_affected() > 0 => {
+                    tracing::info!(prefix = %prefix, "bootstrap API key provisioned");
+                }
+                Ok(_) => tracing::debug!("bootstrap API key already exists"),
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to provision bootstrap API key")
+                }
+            }
+        }
+    }
+
     // Start the atrg server — shared PgPool, single database for everything.
     // with_db_pool() passes our pool to atrg so it runs its own internal
     // migrations (atrg_sessions, atrg_oauth_states) against the same Postgres.

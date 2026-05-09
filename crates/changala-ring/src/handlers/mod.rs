@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod apikeys;
 pub mod archive;
 pub mod auth;
 pub mod brain;
