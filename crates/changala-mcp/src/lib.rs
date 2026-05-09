@@ -5,14 +5,19 @@
 //! `CHANGALA_MCP_ENABLED=true`.
 //!
 //! The MCP server calls Ring XRPC endpoints via HTTP (loopback) using an API key.
+//!
+//! # Security
+//!
+//! The `/mcp` endpoint **must** be protected by [`mcp_auth_layer()`] or an
+//! equivalent auth gate. Without it, anyone who can reach the endpoint gets
+//! full admin access through the pre-authenticated API key held by the MCP
+//! server.
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::schemars::JsonSchema;
 use rmcp::{tool, tool_router};
 use serde::Deserialize;
-
-mod tools;
 
 // ---------------------------------------------------------------------------
 // Parameter structs for each tool
@@ -137,21 +142,15 @@ impl ChangalaServer {
         nsid: &str,
         params: &[(&str, &str)],
     ) -> anyhow::Result<serde_json::Value> {
-        let mut url = format!("{}/xrpc/{}", self.ring_url, nsid);
-        if !params.is_empty() {
-            url.push('?');
-            let pairs: Vec<String> = params
-                .iter()
-                .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
-                .collect();
-            url.push_str(&pairs.join("&"));
-        }
+        let url = format!("{}/xrpc/{}", self.ring_url, nsid);
         let resp = self
             .client
             .get(&url)
+            .query(params)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
         let body: serde_json::Value = resp.json().await?;
         Ok(body)
     }
@@ -166,10 +165,10 @@ impl ChangalaServer {
             .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
             .json(&body)
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
         let result: serde_json::Value = resp.json().await?;
         Ok(result)
     }
@@ -382,15 +381,79 @@ impl ChangalaServer {
 }
 
 // ---------------------------------------------------------------------------
-// Entrypoint
+// Auth middleware
 // ---------------------------------------------------------------------------
 
-/// Create the MCP axum service that can be nest_service'd onto a Router.
+/// Axum middleware that gates the MCP endpoint behind a bearer token
+/// read from `CHANGALA_MCP_ACCESS_KEY`.
 ///
-/// Mount on the Ring with:
+/// If the env var is **not** set, the middleware permits all requests but
+/// logs a warning on first use. This keeps backwards compatibility while
+/// making it loud that auth is missing.
+///
+/// # Usage
+///
 /// ```ignore
-/// router.nest_service("/mcp", changala_mcp::mcp_service())
+/// let mcp_router = axum::Router::new()
+///     .route_service("/mcp", changala_mcp::mcp_service())
+///     .layer(axum::middleware::from_fn(changala_mcp::mcp_auth_middleware));
 /// ```
+pub async fn mcp_auth_middleware(
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    let expected = std::env::var("CHANGALA_MCP_ACCESS_KEY").ok();
+
+    let Some(expected_key) = expected else {
+        tracing::warn!(
+            "CHANGALA_MCP_ACCESS_KEY is not set \u{2014} MCP endpoint is unauthenticated!"
+        );
+        return next.run(req).await;
+    };
+
+    let auth_header = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
+
+    match auth_header {
+        Some(value)
+            if value
+                .strip_prefix("Bearer ")
+                .is_some_and(|t| t == expected_key) =>
+        {
+            next.run(req).await
+        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({
+                "error": "Unauthorized",
+                "message": "Valid Bearer token required for MCP access"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Service constructor
+// ---------------------------------------------------------------------------
+
+/// Create the MCP axum service that can be `route_service`'d onto a Router.
+///
+/// **Always** combine with [`mcp_auth_layer()`] to gate access.
+///
+/// # Example
+///
+/// ```ignore
+/// let mcp_router = axum::Router::new()
+///     .route_service("/mcp", changala_mcp::mcp_service())
+///     .layer(axum::middleware::from_fn(changala_mcp::mcp_auth_middleware));
+/// ```
+#[must_use]
 pub fn mcp_service() -> rmcp::transport::streamable_http_server::StreamableHttpService<
     ChangalaServer,
     rmcp::transport::streamable_http_server::session::local::LocalSessionManager,
@@ -434,7 +497,7 @@ pub fn mcp_service() -> rmcp::transport::streamable_http_server::StreamableHttpS
     }
 
     StreamableHttpService::new(
-        || ChangalaServer::new().map_err(|e| std::io::Error::other(e)),
+        || ChangalaServer::new().map_err(std::io::Error::other),
         Default::default(),
         config,
     )

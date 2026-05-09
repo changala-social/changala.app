@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "changala-aggregator"
-version = "0.2.0"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "atrg-auth",
@@ -443,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "changala-mcp"
-version = "0.2.0"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "axum",
@@ -456,12 +456,11 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "urlencoding",
 ]
 
 [[package]]
 name = "changala-ring"
-version = "0.2.0"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "atrg-auth",
@@ -495,7 +494,7 @@ dependencies = [
 
 [[package]]
 name = "changala-shared"
-version = "0.2.0"
+version = "0.3.6"
 dependencies = [
  "serde",
  "serde_json",

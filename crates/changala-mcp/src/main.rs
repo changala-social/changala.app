@@ -10,14 +10,17 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let host = std::env::var("MCP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    // Default to loopback — never bind 0.0.0.0 unless explicitly requested.
+    let host = std::env::var("MCP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = std::env::var("MCP_PORT").unwrap_or_else(|_| "3001".to_string());
     let bind = format!("{}:{}", host, port);
 
     tracing::info!(bind = %bind, "starting changala-mcp server");
 
     let service = changala_mcp::mcp_service();
-    let router = axum::Router::new().nest_service("/mcp", service);
+    let router = axum::Router::new()
+        .nest_service("/mcp", service)
+        .layer(axum::middleware::from_fn(changala_mcp::mcp_auth_middleware));
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!("MCP server listening on http://{}/mcp", bind);
