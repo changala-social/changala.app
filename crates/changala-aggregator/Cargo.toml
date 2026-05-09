@@ -1,0 +1,29 @@
+[package]
+name = "changala-aggregator"
+version.workspace = true
+edition.workspace = true
+description = "Changala Aggregator — read-only Global View with firehose subscription"
+
+[[bin]]
+name = "changala-aggregator"
+path = "src/main.rs"
+
+[dependencies]
+changala-shared = { workspace = true }
+atrg-core = { workspace = true }
+atrg-auth = { workspace = true }
+atrg-db = { workspace = true }
+atrg-xrpc = { workspace = true }
+atrg-stream = { workspace = true }
+atrg-identity = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+sqlx = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+once_cell = "1"

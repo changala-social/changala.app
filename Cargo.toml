@@ -1,11 +1,17 @@
-[package]
-name = "changala"
-version = "0.1.21"
-edition = "2021"
-description = "Federated social learning platform and student knowledge graph on AT Protocol"
+[workspace]
+resolver = "2"
+members = [
+    "crates/changala-shared",
+    "crates/changala-ring",
+    "crates/changala-aggregator",
+]
 
-[dependencies]
-# AT Protocol framework — postgres backend
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+
+[workspace.dependencies]
+# AT Protocol framework
 atrg-core = { version = "0.1.3", default-features = false, features = ["postgres"] }
 atrg-auth = { version = "0.1.3", default-features = false, features = ["postgres"] }
 atrg-db = { version = "0.1.3", default-features = false, features = ["postgres"] }
@@ -23,13 +29,16 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 
-# Database — Postgres only
+# Database
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "migrate"] }
 
-# Blob storage (S3-compatible — RustFS, MinIO, AWS S3)
+# Blob storage
 rust-s3 = "0.35"
 sha2 = "0.10"
 hex = "0.4"
+
+# Email
+lettre = { version = "0.11", features = ["tokio1-native-tls"] }
 
 # Utilities
 anyhow = "1"
@@ -38,8 +47,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 once_cell = "1"
-lettre = { version = "0.11", features = ["tokio1-native-tls"] }
-urlencoding = "2.1.3"
+urlencoding = "2.1"
 
-[dev-dependencies]
-atrg-testing = "0.1.3"
+# Shared
+changala-shared = { path = "crates/changala-shared" }

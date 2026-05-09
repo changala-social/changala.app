@@ -1,0 +1,9 @@
+[package]
+name = "changala-shared"
+version.workspace = true
+edition.workspace = true
+description = "Shared types for Changala Ring and Aggregator"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

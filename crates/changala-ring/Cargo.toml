@@ -1,0 +1,36 @@
+[package]
+name = "changala-ring"
+version.workspace = true
+edition.workspace = true
+description = "Changala Ring — per-institution write server"
+
+[[bin]]
+name = "changala-ring"
+path = "src/main.rs"
+
+[dependencies]
+changala-shared = { workspace = true }
+atrg-core = { workspace = true }
+atrg-auth = { workspace = true }
+atrg-db = { workspace = true }
+atrg-xrpc = { workspace = true }
+atrg-stream = { workspace = true }
+atrg-repo = { workspace = true }
+atrg-identity = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+sqlx = { workspace = true }
+rust-s3 = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+lettre = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+once_cell = { workspace = true }
+urlencoding = { workspace = true }
