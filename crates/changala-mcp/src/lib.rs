@@ -108,10 +108,22 @@ pub struct ChangalaServer {
 
 impl ChangalaServer {
     fn new() -> anyhow::Result<Self> {
-        let ring_url = std::env::var("CHANGALA_RING_URL")
-            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        // Ring URL: when running inside the Ring, defaults to loopback.
+        // CHANGALA_RING_URL is only needed for standalone deployment.
+        let ring_url = std::env::var("CHANGALA_RING_URL").unwrap_or_else(|_| {
+            let port = std::env::var("ATRG_APP__PORT").unwrap_or_else(|_| "3000".to_string());
+            format!("http://127.0.0.1:{}", port)
+        });
+
+        // API key: try CHANGALA_API_KEY first (explicit MCP key),
+        // fall back to CHANGALA_BOOTSTRAP_API_KEY (the Ring's bootstrap key).
         let api_key = std::env::var("CHANGALA_API_KEY")
-            .map_err(|_| anyhow::anyhow!("CHANGALA_API_KEY env var is required"))?;
+            .or_else(|_| std::env::var("CHANGALA_BOOTSTRAP_API_KEY"))
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "Either CHANGALA_API_KEY or CHANGALA_BOOTSTRAP_API_KEY must be set for MCP"
+                )
+            })?;
 
         Ok(Self {
             client: reqwest::Client::new(),
