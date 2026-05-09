@@ -14,9 +14,15 @@ pub fn api() -> Router<AppState> {
     Router::new()
         .route("/", get(index))
         .route("/api/health", get(health))
-        // Override atrg's built-in client-metadata.json so that client_uri
-        // matches the client_id hostname (PDS validation requirement).
+        // Custom client-metadata.json — derives client_uri from client_id
+        // instead of using app.host:app.port (which produces http://0.0.0.0:3000).
+        // We use atrg_auth::routes::routes() (not auth_router()) in main.rs
+        // so there's no route conflict.
         .route("/client-metadata.json", get(client_metadata))
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(well_known_oauth),
+        )
         .merge(xrpc_routes())
 }
 
@@ -336,5 +342,30 @@ async fn client_metadata(State(state): State<AppState>) -> Json<serde_json::Valu
         "application_type": "web",
         "token_endpoint_auth_method": "none",
         "dpop_bound_access_tokens": true
+    }))
+}
+
+/// OAuth protected resource metadata.
+async fn well_known_oauth(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = &state.config.auth;
+    // Derive base URL from client_id origin (same logic as client_metadata)
+    let base_url = {
+        let id = &config.client_id;
+        match id.find("://") {
+            Some(scheme_end) => {
+                let after_scheme = &id[scheme_end + 3..];
+                match after_scheme.find('/') {
+                    Some(path_start) => id[..scheme_end + 3 + path_start].to_string(),
+                    None => id.clone(),
+                }
+            }
+            None => format!("http://{}:{}", state.config.app.host, state.config.app.port),
+        }
+    };
+    Json(json!({
+        "resource": base_url,
+        "authorization_servers": [],
+        "scopes_supported": [config.scope],
+        "bearer_methods_supported": ["header"]
     }))
 }

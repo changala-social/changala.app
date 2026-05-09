@@ -144,7 +144,9 @@ async fn main() -> anyhow::Result<()> {
     // migrations (atrg_sessions, atrg_oauth_states) against the same Postgres.
     AtrgApp::new()
         .with_db_pool(pg_pool)
-        .with_auth_routes(atrg_auth::routes::auth_router())
+        // Use routes() instead of auth_router() — we override
+        // /client-metadata.json in our own router to fix client_uri.
+        .with_auth_routes(atrg_auth::routes::routes())
         .with_cleanup_task(atrg_auth::routes::spawn_cleanup_task)
         .mount(routes::api())
         .on_event(handlers::events::handle_event)
