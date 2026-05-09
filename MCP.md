@@ -30,6 +30,25 @@ You should get back a JSON-RPC response with the server's capabilities and tool 
 
 ### 3. Connect your AI client
 
+#### Zed
+
+Add to `~/.config/zed/settings.json`:
+
+```json
+{
+  "context_servers": {
+    "changala": {
+      "settings": {
+        "url": "https://your-ring.example.com/mcp",
+        "headers": {
+          "Authorization": "Bearer chg_your-api-key-here"
+        }
+      }
+    }
+  }
+}
+```
+
 #### Claude Desktop
 
 Edit `~/.config/claude/claude_desktop_config.json`:
@@ -39,22 +58,10 @@ Edit `~/.config/claude/claude_desktop_config.json`:
   "mcpServers": {
     "changala": {
       "type": "streamable-http",
-      "url": "https://your-ring.example.com/mcp"
-    }
-  }
-}
-```
-
-#### Cursor
-
-Add to your MCP settings:
-
-```json
-{
-  "mcpServers": {
-    "changala": {
-      "type": "streamable-http",
-      "url": "https://your-ring.example.com/mcp"
+      "url": "https://your-ring.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer chg_your-api-key-here"
+      }
     }
   }
 }
@@ -62,10 +69,12 @@ Add to your MCP settings:
 
 #### Any MCP-compatible client
 
-The MCP server uses the **Streamable HTTP** transport (SSE). Connect to:
+The MCP endpoint requires `Authorization: Bearer chg_xxx` on every request.
+Without a valid API key, you'll get `401 Unauthorized`.
 
 ```
 POST https://your-ring.example.com/mcp
+Authorization: Bearer chg_your-api-key-here
 ```
 
 ---
