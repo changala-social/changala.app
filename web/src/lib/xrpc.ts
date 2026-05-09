@@ -47,9 +47,8 @@ export async function xrpcGet<T>(
     const body = await res
       .json()
       .catch(() => ({ error: "UnknownError", message: res.statusText }));
-    // Auto-logout on expired/invalid session
     if (res.status === 401) {
-      clearExpiredSession();
+      clearExpiredSession(false); // GET = don't auto-logout
     }
     throw new XrpcError(
       body.error || "UnknownError",
@@ -73,7 +72,7 @@ export async function xrpcPost<T>(nsid: string, body?: unknown): Promise<T> {
       .json()
       .catch(() => ({ error: "UnknownError", message: res.statusText }));
     if (res.status === 401) {
-      clearExpiredSession();
+      clearExpiredSession(true); // POST = auto-logout
     }
     throw new XrpcError(
       errBody.error || "UnknownError",
@@ -85,12 +84,14 @@ export async function xrpcPost<T>(nsid: string, body?: unknown): Promise<T> {
 }
 
 /// Clear auth state and redirect to login when session expires.
-function clearExpiredSession() {
+/// Only triggers for POST requests (writes) — GET 401s are ignored
+/// because public endpoints reject stale tokens even though they
+/// don't require auth.
+function clearExpiredSession(isPost: boolean) {
+  if (!isPost) return;
   const token = localStorage.getItem("changala_access_token");
   if (token) {
     clearAuth();
-    // Redirect to login — use window.location to force full page reload
-    // so AuthContext re-reads the cleared localStorage.
     window.location.href = "/login";
   }
 }
