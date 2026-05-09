@@ -7,8 +7,9 @@ cors_origins = []
 environment = "production"
 
 [auth]
-client_id = "https://your-domain.example.com/client-metadata.json"
-redirect_uri = "https://your-domain.example.com/auth/callback"
+client_id = "https://changala.app/client-metadata.json"
+redirect_uri = "https://changala.app/auth/callback"
+post_login_redirect = "https://changala.app/login"
 scope = "atproto transition:generic"
 
 [database]

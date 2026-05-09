@@ -37,7 +37,10 @@ export async function xrpcGet<T>(
       if (v !== undefined && v !== null) url.searchParams.set(k, v);
     });
   }
-  const res = await fetch(url.toString(), { headers: authHeaders() });
+  const res = await fetch(url.toString(), {
+    headers: authHeaders(),
+    credentials: "include",
+  });
   if (!res.ok) {
     const body = await res
       .json()
@@ -57,6 +60,7 @@ export async function xrpcPost<T>(nsid: string, body?: unknown): Promise<T> {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
+    credentials: "include",
   });
   if (!res.ok) {
     const errBody = await res

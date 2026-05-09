@@ -1,18 +1,18 @@
 [package]
 name = "changala"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2021"
 description = "Federated social learning platform and student knowledge graph on AT Protocol"
 
 [dependencies]
 # AT Protocol framework — postgres backend
-atrg-core = { version = "0.1.2", default-features = false, features = ["postgres"] }
-atrg-auth = { version = "0.1.2", default-features = false, features = ["postgres"] }
-atrg-db = { version = "0.1.2", default-features = false, features = ["postgres"] }
-atrg-xrpc = "0.1.2"
-atrg-stream = "0.1.2"
-atrg-repo = "0.1.2"
-atrg-identity = "0.1.2"
+atrg-core = { version = "0.1.3", default-features = false, features = ["postgres"] }
+atrg-auth = { version = "0.1.3", default-features = false, features = ["postgres"] }
+atrg-db = { version = "0.1.3", default-features = false, features = ["postgres"] }
+atrg-xrpc = "0.1.3"
+atrg-stream = "0.1.3"
+atrg-repo = "0.1.3"
+atrg-identity = "0.1.3"
 
 # HTTP
 axum = { version = "0.8", features = ["macros"] }
@@ -40,4 +40,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 once_cell = "1"
 
 [dev-dependencies]
-atrg-testing = "0.1.2"
+atrg-testing = "0.1.3"

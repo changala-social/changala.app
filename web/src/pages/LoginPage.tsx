@@ -1,37 +1,65 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
-import { ErrorMessage } from '../components/common/ErrorMessage';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { LoadingSpinner } from "../components/common/LoadingSpinner";
+import { ErrorMessage } from "../components/common/ErrorMessage";
+
+const RING_URL =
+  import.meta.env.VITE_RING_URL || "https://changala.tail477f2f.ts.net";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { isAuthenticated, login } = useAuth();
 
-  const [handle, setHandle] = useState('');
+  const [handle, setHandle] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [processing, setProcessing] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
 
-  // Already authenticated — redirect immediately
+  // Already authenticated via AuthContext — redirect immediately
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      navigate("/dashboard", { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
-  // Handle OAuth callback: token, did, handle arrive as query params
+  // On mount: probe GET /auth/session to detect a valid atrg_session cookie.
+  // This handles the redirect-back from atrg-auth after successful OAuth.
   useEffect(() => {
-    const token = searchParams.get('token');
-    const did = searchParams.get('did');
-    const callbackHandle = searchParams.get('handle');
+    let cancelled = false;
 
-    if (token && did && callbackHandle) {
-      setProcessing(true);
-      login(token, did, callbackHandle);
-      navigate('/dashboard', { replace: true });
+    async function checkSession() {
+      try {
+        const res = await fetch(`${RING_URL}/auth/session`, {
+          credentials: "include",
+        });
+
+        if (cancelled) return;
+
+        if (res.ok) {
+          const session: { did: string; handle: string; expires_at?: string } =
+            await res.json();
+
+          // Store a sentinel token — real auth is cookie-based
+          login("cookie-session", session.did, session.handle);
+          navigate("/dashboard", { replace: true });
+          return;
+        }
+
+        // Any non-200 (including 401) means no valid session — show form
+      } catch {
+        // Network error — Ring unreachable; show form anyway
+      }
+
+      if (!cancelled) {
+        setCheckingSession(false);
+      }
     }
-  }, [searchParams, login, navigate]);
+
+    checkSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [login, navigate]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,20 +67,24 @@ export default function LoginPage() {
 
     const trimmed = handle.trim();
     if (!trimmed) {
-      setError('Please enter your AT Protocol handle.');
+      setError("Please enter your AT Protocol handle.");
       return;
     }
 
-    // Redirect to the atrg OAuth endpoint
-    window.location.href = `/auth/login?handle=${encodeURIComponent(trimmed)}`;
+    // Redirect browser to atrg-auth OAuth entry point.
+    // After the full OAuth dance the browser lands back on this page
+    // with an atrg_session cookie set.
+    const redirectAfter = `${window.location.origin}/login`;
+    window.location.href = `${RING_URL}/auth/login?handle=${encodeURIComponent(trimmed)}&redirect_after=${encodeURIComponent(redirectAfter)}`;
   }
 
-  if (processing) {
+  // Show spinner while we probe the session cookie
+  if (checkingSession) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center space-y-4">
           <LoadingSpinner size="lg" />
-          <p className="text-sm text-text-muted">Completing login&hellip;</p>
+          <p className="text-sm text-text-muted">Checking session&hellip;</p>
         </div>
       </div>
     );
@@ -72,7 +104,10 @@ export default function LoginPage() {
         {/* Login form */}
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="handle" className="block text-sm font-medium text-text mb-1">
+            <label
+              htmlFor="handle"
+              className="block text-sm font-medium text-text mb-1"
+            >
               AT Protocol Handle
             </label>
             <input
@@ -98,7 +133,8 @@ export default function LoginPage() {
         </form>
 
         <p className="text-center text-xs text-text-muted">
-          Your identity lives on the AT Protocol — Changala never owns your account.
+          Your identity lives on the AT Protocol — Changala never owns your
+          account.
         </p>
       </div>
     </div>
