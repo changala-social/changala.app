@@ -1056,7 +1056,8 @@ function ApiKeysSection() {
 // ── Main AdminPanel ──────────────────────────────────────────────
 
 export default function AdminPanel() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, did } = useAuth();
+  const { data: roleData, isLoading: roleLoading } = useRole(did || "");
   const [activeTab, setActiveTab] = useState<AdminTab>("courses");
 
   if (!isAuthenticated) {
@@ -1065,6 +1066,25 @@ export default function AdminPanel() {
         <h1 className="text-2xl font-bold text-text mb-3">Admin Panel</h1>
         <p className="text-text-secondary">
           You must be signed in to access this panel.
+        </p>
+      </div>
+    );
+  }
+
+  if (roleLoading) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (roleData?.role !== "admin") {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <h1 className="text-2xl font-bold text-text mb-3">Access Denied</h1>
+        <p className="text-text-secondary">
+          This panel is restricted to administrators.
         </p>
       </div>
     );
