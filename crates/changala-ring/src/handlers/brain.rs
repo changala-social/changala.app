@@ -1,10 +1,11 @@
 //! Brain service handlers — node CRUD and linking.
 
-use axum::extract::Query;
-use axum::Json;
-
 use atrg_auth::RequireAuth;
+use atrg_blob::BlobStore;
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
+use axum::extract::{Query, State};
+use axum::Json;
 use serde_json::json;
 
 use super::auth;
@@ -26,10 +27,11 @@ const RING_DID: &str = "did:web:ring.changala.local";
 /// Creates a new brain node (version 1). Stores content in the S3 blob store
 /// and returns a `ring_ref` + `node_template` for the PDS record.
 pub async fn create_node(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateNodeInput>,
 ) -> Result<Json<AppChangalaRingCreateNodeOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = input
@@ -103,10 +105,11 @@ pub async fn create_node(
 /// Creates a new version of an existing brain node. Looks up the parent node
 /// to inherit author identity and increments the version counter.
 pub async fn version_node(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingVersionNodeInput>,
 ) -> Result<Json<AppChangalaRingVersionNodeOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -198,9 +201,10 @@ pub async fn version_node(
 ///
 /// Retrieves brain node content from the Ring's S3 blob store by CID.
 pub async fn get_node_content(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetNodeContentParams>,
 ) -> Result<Json<AppChangalaRingGetNodeContentOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let content_bytes = app.blobs.get(&params.cid).await.map_err(|e| XrpcError {
         name: XrpcErrorName::NotFound,
         message: format!("Blob not found: {e}"),
@@ -232,10 +236,11 @@ pub async fn get_node_content(
 /// any AT URI / external target). The Global View maintains a bidirectional
 /// graph index from these records.
 pub async fn create_link(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateLinkInput>,
 ) -> Result<Json<AppChangalaRingCreateLinkOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -279,10 +284,11 @@ pub async fn create_link(
 /// Deletes a brain link by its AT URI. The Global View will pick up the
 /// deletion via the firehose and update its graph index accordingly.
 pub async fn delete_link(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingDeleteLinkInput>,
 ) -> Result<Json<AppChangalaRingDeleteLinkOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let result = sqlx::query("DELETE FROM brain_links WHERE link_uri = $1")

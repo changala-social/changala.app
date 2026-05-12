@@ -1,7 +1,8 @@
 //! Identity service handlers — email verification and membership management.
 
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::Json;
 use changala_shared::types::*;
 use serde_json::json;
@@ -12,9 +13,10 @@ use serde_json::json;
 /// - Call 1: {did, email} → generates OTP, stores in DB, returns {status: "otpSent"}
 /// - Call 2: {did, email, otp} → verifies, creates membership, returns {status: "verified", membershipUri}
 pub async fn verify_email(
+    State(state): State<AppState>,
     Json(input): Json<AppChangalaRingVerifyEmailInput>,
 ) -> Result<Json<AppChangalaRingVerifyEmailOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     // Validate email domain — must be an institution email
     // For MVP, accept any email. Post-MVP: check against configured domains.
 
@@ -161,9 +163,10 @@ pub async fn verify_email(
 
 /// GET /xrpc/app.changala.ring.getMemberships
 pub async fn get_memberships(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetMembershipsParams>,
 ) -> Result<Json<AppChangalaRingGetMembershipsOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let rows = sqlx::query_as::<_, (String, String, String, String, Option<String>)>(
         "SELECT institution_did, institution_domain, role, verified_at, membership_uri FROM memberships WHERE did = $1"
     )
@@ -193,9 +196,10 @@ pub async fn get_memberships(
 
 /// GET /xrpc/app.changala.ring.getRole
 pub async fn get_role(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetRoleParams>,
 ) -> Result<Json<AppChangalaRingGetRoleOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let role =
         sqlx::query_scalar::<_, String>(
             "SELECT role FROM memberships WHERE did = $1 \

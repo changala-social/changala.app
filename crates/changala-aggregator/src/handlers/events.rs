@@ -1,57 +1,35 @@
-//! Jetstream event handler — materialises firehose events into the
-//! PostgreSQL database. Processes record creates/updates/deletes for all
-//! app.changala.* collections.
+//! Jetstream event router — materialises firehose events into the
+//! PostgreSQL database using atrg 0.2.0's EventRouterBuilder.
 //!
-//! This module is wired into `main.rs` via `AtrgApp::on_event(handle_event)`.
-//! The handler dispatches on `commit.collection` to specialised functions
-//! that INSERT or UPDATE the materialised tables.
+//! This module builds a typed event dispatcher that routes events by
+//! collection to specialised handler functions. Wired into main.rs via
+//! `AtrgApp::on_event(events::event_router())`.
 
 use atrg_core::AppState;
-use atrg_stream::JetstreamEvent;
-use sqlx::PgPool;
+use atrg_stream::router::CommitEvent;
+use atrg_stream::EventRouterBuilder;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Top-level dispatcher
+// Router builder
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Process a single Jetstream event.
+/// Build the Jetstream event router.
 ///
-/// This handler is called for every event matching the collections configured
-/// in `atrg.toml` `[jetstream].collections`.
-pub async fn handle_event(event: JetstreamEvent, _state: AppState) -> anyhow::Result<()> {
-    let app = crate::state::get();
-
-    let commit = match &event.commit {
-        Some(c) => c,
-        None => return Ok(()), // identity/account events — ignore for now
-    };
-
-    if commit.operation != "create" {
-        // MVP: only handle creates. Updates and deletes deferred.
-        return Ok(());
-    }
-
-    let record = match &commit.record {
-        Some(r) => r,
-        None => return Ok(()),
-    };
-
-    match commit.collection.as_str() {
-        "app.changala.keyword" => handle_keyword(&event.did, record, &app.db).await?,
-        "app.changala.vote" => handle_vote(&event.did, &commit.rkey, record, &app.db).await?,
-        "app.changala.label" => handle_label(&event.did, &commit.rkey, record, &app.db).await?,
-        "app.changala.brain.node" => {
-            handle_brain_node(&event.did, &commit.rkey, record, &app.db).await?
-        }
-        "app.changala.brain.link" => {
-            handle_brain_link(&event.did, &commit.rkey, record, &app.db).await?
-        }
-        _ => {
-            tracing::debug!(collection = %commit.collection, "ignoring unhandled collection");
-        }
-    }
-
-    Ok(())
+/// Registers handlers for each `app.changala.*` collection the aggregator
+/// cares about. Returns a closure compatible with `AtrgApp::on_event()`.
+pub fn event_router() -> impl Fn(
+    atrg_stream::JetstreamEvent,
+    AppState,
+) -> futures::future::BoxFuture<'static, anyhow::Result<()>>
+       + Send
+       + Sync {
+    EventRouterBuilder::<AppState>::new()
+        .on_create("app.changala.keyword", handle_keyword)
+        .on_create("app.changala.vote", handle_vote)
+        .on_create("app.changala.label", handle_label)
+        .on_create("app.changala.brain.node", handle_brain_node)
+        .on_create("app.changala.brain.link", handle_brain_link)
+        .build()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -62,13 +40,19 @@ pub async fn handle_event(event: JetstreamEvent, _state: AppState) -> anyhow::Re
 ///
 /// Inserts into the `keywords` table. Duplicate (session_uri, did, text)
 /// tuples are silently ignored via `ON CONFLICT DO NOTHING`.
-async fn handle_keyword(did: &str, record: &serde_json::Value, db: &PgPool) -> anyhow::Result<()> {
+async fn handle_keyword(event: CommitEvent, state: AppState) -> anyhow::Result<()> {
+    let app = state.extension::<crate::AggregatorState>();
+    let record = match &event.record {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
     let session_uri = record["sessionUri"].as_str().unwrap_or_default();
     let text = record["text"].as_str().unwrap_or_default();
     let created_at = record["createdAt"].as_str().unwrap_or_default();
 
     if session_uri.is_empty() || text.is_empty() {
-        tracing::warn!(did, "keyword event missing sessionUri or text — skipping");
+        tracing::warn!(did = %event.did, "keyword event missing sessionUri or text — skipping");
         return Ok(());
     }
 
@@ -77,14 +61,14 @@ async fn handle_keyword(did: &str, record: &serde_json::Value, db: &PgPool) -> a
          VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
     )
     .bind(session_uri)
-    .bind(did)
+    .bind(&event.did)
     .bind(text)
     .bind("") // keyword_uri not available from firehose record
     .bind(created_at)
-    .execute(db)
+    .execute(&app.db)
     .await?;
 
-    tracing::info!(did, session_uri, text, "materialised keyword from firehose");
+    tracing::info!(did = %event.did, session_uri, text, "materialised keyword from firehose");
     Ok(())
 }
 
@@ -96,21 +80,22 @@ async fn handle_keyword(did: &str, record: &serde_json::Value, db: &PgPool) -> a
 ///
 /// Constructs a canonical vote URI from the DID + rkey and inserts into the
 /// `votes` table. Duplicates are silently ignored.
-async fn handle_vote(
-    did: &str,
-    rkey: &str,
-    record: &serde_json::Value,
-    db: &PgPool,
-) -> anyhow::Result<()> {
+async fn handle_vote(event: CommitEvent, state: AppState) -> anyhow::Result<()> {
+    let app = state.extension::<crate::AggregatorState>();
+    let record = match &event.record {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
     let subject_uri = record["subjectUri"].as_str().unwrap_or_default();
     let created_at = record["createdAt"].as_str().unwrap_or_default();
 
     if subject_uri.is_empty() {
-        tracing::warn!(did, "vote event missing subjectUri — skipping");
+        tracing::warn!(did = %event.did, "vote event missing subjectUri — skipping");
         return Ok(());
     }
 
-    let vote_uri = format!("at://{did}/app.changala.vote/{rkey}");
+    let vote_uri = format!("at://{}/app.changala.vote/{}", event.did, event.rkey);
 
     sqlx::query(
         "INSERT INTO votes (vote_uri, subject_uri, voter_did, created_at) \
@@ -118,12 +103,12 @@ async fn handle_vote(
     )
     .bind(&vote_uri)
     .bind(subject_uri)
-    .bind(did)
+    .bind(&event.did)
     .bind(created_at)
-    .execute(db)
+    .execute(&app.db)
     .await?;
 
-    tracing::info!(did, subject_uri, "materialised vote from firehose");
+    tracing::info!(did = %event.did, subject_uri, "materialised vote from firehose");
     Ok(())
 }
 
@@ -136,23 +121,24 @@ async fn handle_vote(
 /// Labels carry a `neg` flag indicating whether this is an assertion (0)
 /// or a negation/retraction (1). Both are stored; the Global View resolves
 /// the effective state by checking for negation records.
-async fn handle_label(
-    did: &str,
-    rkey: &str,
-    record: &serde_json::Value,
-    db: &PgPool,
-) -> anyhow::Result<()> {
+async fn handle_label(event: CommitEvent, state: AppState) -> anyhow::Result<()> {
+    let app = state.extension::<crate::AggregatorState>();
+    let record = match &event.record {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
     let subject_uri = record["subjectUri"].as_str().unwrap_or_default();
     let val = record["val"].as_str().unwrap_or_default();
     let neg = record["neg"].as_i64().unwrap_or(0);
     let created_at = record["createdAt"].as_str().unwrap_or_default();
 
     if subject_uri.is_empty() || val.is_empty() {
-        tracing::warn!(did, "label event missing subjectUri or val — skipping");
+        tracing::warn!(did = %event.did, "label event missing subjectUri or val — skipping");
         return Ok(());
     }
 
-    let label_uri = format!("at://{did}/app.changala.label/{rkey}");
+    let label_uri = format!("at://{}/app.changala.label/{}", event.did, event.rkey);
 
     sqlx::query(
         "INSERT INTO labels (label_uri, subject_uri, val, src_did, neg, created_at) \
@@ -161,19 +147,13 @@ async fn handle_label(
     .bind(&label_uri)
     .bind(subject_uri)
     .bind(val)
-    .bind(did)
+    .bind(&event.did)
     .bind(neg)
     .bind(created_at)
-    .execute(db)
+    .execute(&app.db)
     .await?;
 
-    tracing::info!(
-        did,
-        subject_uri,
-        val,
-        neg,
-        "materialised label from firehose"
-    );
+    tracing::info!(did = %event.did, subject_uri, val, neg, "materialised label from firehose");
     Ok(())
 }
 
@@ -189,12 +169,13 @@ async fn handle_label(
 ///
 /// Uses `INSERT ... ON CONFLICT (uri) DO UPDATE` so that versioned updates
 /// (same URI, new version) overwrite the previous row.
-async fn handle_brain_node(
-    did: &str,
-    rkey: &str,
-    record: &serde_json::Value,
-    db: &PgPool,
-) -> anyhow::Result<()> {
+async fn handle_brain_node(event: CommitEvent, state: AppState) -> anyhow::Result<()> {
+    let app = state.extension::<crate::AggregatorState>();
+    let record = match &event.record {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
     let title = record["title"].as_str().unwrap_or_default();
     let format = record["format"].as_str().unwrap_or("markdown");
     let version = record["version"].as_i64().unwrap_or(1);
@@ -222,7 +203,7 @@ async fn handle_brain_node(
         _ => "[]".to_string(),
     };
 
-    let uri = format!("at://{did}/app.changala.brain.node/{rkey}");
+    let uri = format!("at://{}/app.changala.brain.node/{}", event.did, event.rkey);
 
     sqlx::query(
         "INSERT INTO brain_nodes \
@@ -234,7 +215,7 @@ async fn handle_brain_node(
            version = EXCLUDED.version, summary = EXCLUDED.summary, created_at = EXCLUDED.created_at",
     )
     .bind(&uri)
-    .bind(did)
+    .bind(&event.did)
     .bind(title)
     .bind(format)
     .bind(ring_did)
@@ -244,10 +225,10 @@ async fn handle_brain_node(
     .bind(version)
     .bind(summary)
     .bind(created_at)
-    .execute(db)
+    .execute(&app.db)
     .await?;
 
-    tracing::info!(did, uri = %uri, title, "materialised brain node from firehose");
+    tracing::info!(did = %event.did, uri = %uri, title, "materialised brain node from firehose");
     Ok(())
 }
 
@@ -260,25 +241,26 @@ async fn handle_brain_node(
 /// Brain links are directed edges in the knowledge graph. The Global View
 /// uses these to power backlink queries and graph traversal. Duplicate
 /// (from_uri, to_uri) edges are silently ignored.
-async fn handle_brain_link(
-    did: &str,
-    rkey: &str,
-    record: &serde_json::Value,
-    db: &PgPool,
-) -> anyhow::Result<()> {
+async fn handle_brain_link(event: CommitEvent, state: AppState) -> anyhow::Result<()> {
+    let app = state.extension::<crate::AggregatorState>();
+    let record = match &event.record {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
     let from_uri = record["fromUri"].as_str().unwrap_or_default();
     let to_uri = record["toUri"].as_str().unwrap_or_default();
     let created_at = record["createdAt"].as_str().unwrap_or_default();
 
     if from_uri.is_empty() || to_uri.is_empty() {
-        tracing::warn!(did, "brain link event missing fromUri or toUri — skipping");
+        tracing::warn!(did = %event.did, "brain link event missing fromUri or toUri — skipping");
         return Ok(());
     }
 
     // Optional edge label (e.g. "see also", "contradicts", "expands")
     let label = record.get("label").and_then(|v| v.as_str());
 
-    let link_uri = format!("at://{did}/app.changala.brain.link/{rkey}");
+    let link_uri = format!("at://{}/app.changala.brain.link/{}", event.did, event.rkey);
 
     sqlx::query(
         "INSERT INTO brain_links \
@@ -289,16 +271,11 @@ async fn handle_brain_link(
     .bind(from_uri)
     .bind(to_uri)
     .bind(label)
-    .bind(did)
+    .bind(&event.did)
     .bind(created_at)
-    .execute(db)
+    .execute(&app.db)
     .await?;
 
-    tracing::info!(
-        did,
-        from_uri,
-        to_uri,
-        "materialised brain link from firehose"
-    );
+    tracing::info!(did = %event.did, from_uri, to_uri, "materialised brain link from firehose");
     Ok(())
 }

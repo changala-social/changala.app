@@ -7,9 +7,10 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::Json;
 
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
@@ -109,9 +110,10 @@ async fn fetch_node_metadata(
 /// `depth` hops (default 2, max 3). Both outbound and inbound edges are
 /// followed at each level. Total nodes are capped at 100.
 pub async fn get_node_graph(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetNodeGraphParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNodeGraphOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let depth = params.depth.unwrap_or(DEFAULT_DEPTH).clamp(1, MAX_DEPTH) as usize;
 
     // BFS state
@@ -231,9 +233,10 @@ pub async fn get_node_graph(
 /// pagination on `created_at`. Each backlink includes the source node's
 /// title and author DID for display without a second round-trip.
 pub async fn get_backlinks(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetBacklinksParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetBacklinksOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = params
         .limit
         .unwrap_or(DEFAULT_BACKLINKS_LIMIT)
@@ -323,9 +326,10 @@ pub async fn get_backlinks(
 /// node (default 1, max 3). Each neighbour includes its hop distance from
 /// the center. The center node itself is excluded from results.
 pub async fn get_neighbours(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetNeighboursParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNeighboursOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let hops = params.hops.unwrap_or(DEFAULT_HOPS).clamp(1, MAX_DEPTH) as usize;
     let limit = params
         .limit

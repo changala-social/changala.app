@@ -1,10 +1,11 @@
 //! Archive service handlers — end-of-semester archival pipeline.
 
 use atrg_auth::RequireAuth;
-use axum::extract::Query;
-use axum::Json;
-
+use atrg_blob::BlobStore;
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
+use axum::extract::{Query, State};
+use axum::Json;
 use serde_json::json;
 
 use changala_shared::types::*;
@@ -28,10 +29,11 @@ const RING_DID: &str = "did:web:ring.changala.local";
 /// that the course exists, counts sessions and notes, and creates an archive
 /// record with status `initiated`.
 pub async fn initiate_archive(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingInitiateArchiveInput>,
 ) -> Result<Json<AppChangalaRingInitiateArchiveOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_role(&app.db, &session.did, "admin").await?;
 
@@ -123,10 +125,11 @@ pub async fn initiate_archive(
 /// Seals a previously initiated archive, making it immutable. Generates a
 /// bundle CID and assigns an AT URI to the sealed archive record.
 pub async fn seal_archive(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingSealArchiveInput>,
 ) -> Result<Json<AppChangalaRingSealArchiveOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_role(&app.db, &session.did, "admin").await?;
 
@@ -207,10 +210,11 @@ pub async fn seal_archive(
 /// Exports a sealed archive in the requested format. Generates a real
 /// bundle blob via the S3 blob store and returns an export reference.
 pub async fn export_archive(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingExportArchiveInput>,
 ) -> Result<Json<AppChangalaRingExportArchiveOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -273,10 +277,11 @@ pub async fn export_archive(
 /// is not performed — this generates a fake IA identifier and URL. Real
 /// upload requires an S3-compatible API key for `archive.org`.
 pub async fn upload_to_internet_archive(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingUploadToInternetArchiveInput>,
 ) -> Result<Json<AppChangalaRingUploadToInternetArchiveOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_role(&app.db, &session.did, "admin").await?;
 
@@ -346,9 +351,10 @@ pub async fn upload_to_internet_archive(
 /// Retrieves an archive record by course URI and semester. Returns the
 /// archive regardless of status so callers can check progress.
 pub async fn get_archive(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetArchiveParams>,
 ) -> Result<Json<AppChangalaRingGetArchiveOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
 
     let row = sqlx::query_as::<
         _,

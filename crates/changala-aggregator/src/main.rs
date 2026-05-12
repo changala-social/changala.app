@@ -1,10 +1,20 @@
 use anyhow::Context;
 use atrg_core::AtrgApp;
 use sqlx::postgres::PgPool;
+use std::path::Path;
 
 mod handlers;
 mod routes;
-mod state;
+
+/// Aggregator application state — registered as an AppState extension.
+///
+/// Replaces the old `once_cell` singleton. Access in handlers via:
+///   `let app = state.extension::<AggregatorState>();`
+#[derive(Clone, Debug)]
+pub struct AggregatorState {
+    /// PostgreSQL connection pool for materialised views.
+    pub db: PgPool,
+}
 
 /// Aggregator config from atrg.toml [changala] section.
 #[derive(Debug, serde::Deserialize)]
@@ -23,15 +33,9 @@ impl AggregatorConfig {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let toml_str = std::fs::read_to_string("atrg.toml").context("Failed to read atrg.toml")?;
-    let toml_val: toml::Value = toml::from_str(&toml_str).context("Failed to parse atrg.toml")?;
-    let changala_section = toml_val
-        .get("changala")
-        .context("Missing [changala] section in atrg.toml")?;
-    let mut config: AggregatorConfig = changala_section
-        .clone()
-        .try_into()
-        .context("Invalid [changala] config")?;
+    // atrg 0.2.0: use load_app_config() instead of manual TOML parsing
+    let mut config: AggregatorConfig = atrg_core::config::load_app_config("changala")
+        .context("Failed to load [changala] config from atrg.toml")?;
 
     config.apply_env_overrides();
 
@@ -40,72 +44,27 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to connect to PostgreSQL")?;
     tracing::info!(url = %config.database_url, "connected to PostgreSQL");
 
-    // Run aggregator migrations
-    run_aggregator_migrations(&pg_pool)
-        .await
-        .context("Failed to run aggregator migrations")?;
+    // atrg 0.2.0: run_isolated_migrations() replaces the hand-rolled runner.
+    // Uses "_aggregator_migrations" tracking table to avoid conflicts.
+    atrg_db::run_isolated_migrations(
+        &atrg_db::DbPool::Postgres(pg_pool.clone()),
+        Path::new("./aggregator_migrations"),
+        "_aggregator_migrations",
+    )
+    .await
+    .context("Failed to run aggregator migrations")?;
     tracing::info!("applied aggregator migrations");
 
-    state::init(state::Aggregator {
+    // atrg 0.2.0: register app state as extension (replaces once_cell singleton)
+    let aggregator_state = AggregatorState {
         db: pg_pool.clone(),
-    });
+    };
 
     AtrgApp::new()
         .with_db_pool(pg_pool)
+        .with_extension(aggregator_state)
         .mount(routes::api())
-        .on_event(handlers::events::handle_event)
+        .on_event(handlers::events::event_router())
         .run()
         .await
-}
-
-async fn run_aggregator_migrations(pool: &PgPool) -> anyhow::Result<()> {
-    sqlx::raw_sql(
-        "CREATE TABLE IF NOT EXISTS _changala_aggregator_migrations (
-            version  BIGINT      PRIMARY KEY,
-            description TEXT     NOT NULL,
-            checksum BYTEA       NOT NULL,
-            applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )",
-    )
-    .execute(pool)
-    .await
-    .context("creating migration tracking table")?;
-
-    let migrator = sqlx::migrate!("./aggregator_migrations");
-
-    for migration in migrator.migrations.iter() {
-        let already_applied: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM _changala_aggregator_migrations WHERE version = $1)",
-        )
-        .bind(migration.version)
-        .fetch_one(pool)
-        .await?;
-
-        if already_applied {
-            continue;
-        }
-
-        sqlx::raw_sql(migration.sql.as_ref())
-            .execute(pool)
-            .await
-            .with_context(|| {
-                format!(
-                    "migration {} ({})",
-                    migration.version, migration.description
-                )
-            })?;
-
-        sqlx::query(
-            "INSERT INTO _changala_aggregator_migrations (version, description, checksum) VALUES ($1, $2, $3)",
-        )
-        .bind(migration.version)
-        .bind(migration.description.as_ref())
-        .bind(&*migration.checksum)
-        .execute(pool)
-        .await?;
-
-        tracing::info!(version = migration.version, name = %migration.description, "applied aggregator migration");
-    }
-
-    Ok(())
 }

@@ -1,8 +1,9 @@
 //! Feed handlers — course feeds, social feeds, brain feeds, trending, archives.
 
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::Json;
 
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
@@ -38,9 +39,10 @@ fn session_status_to_event_type(status: &str) -> &str {
 
 /// GET /xrpc/app.changala.globalview.getNotes
 pub async fn get_notes(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetNotesParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNotesOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let sort_by = params.sort_by.as_deref().unwrap_or("votes");
 
@@ -173,9 +175,10 @@ pub async fn get_notes(
 
 /// GET /xrpc/app.changala.globalview.getCourseFeed
 pub async fn get_course_feed(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetCourseFeedParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetCourseFeedOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
 
@@ -284,9 +287,10 @@ pub async fn get_course_feed(
 
 /// GET /xrpc/app.changala.globalview.getSocialFeed
 pub async fn get_social_feed(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetSocialFeedParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetSocialFeedOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let mode = params.mode.as_deref().unwrap_or("all");
@@ -403,9 +407,10 @@ pub async fn get_social_feed(
 
 /// GET /xrpc/app.changala.globalview.getBrainFeed
 pub async fn get_brain_feed(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetBrainFeedParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetBrainFeedOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
 
@@ -495,9 +500,10 @@ pub async fn get_brain_feed(
 /// Materialises the keyword histogram for a single session. Returns keyword
 /// texts with submission counts, total submission count, and window state.
 pub async fn get_keyword_histogram(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetKeywordHistogramParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetKeywordHistogramOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     use sqlx::Row;
 
     // Look up session to determine window state.
@@ -566,9 +572,10 @@ pub async fn get_keyword_histogram(
 
 /// GET /xrpc/app.changala.globalview.getTrendingKeywords
 pub async fn get_trending_keywords(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetTrendingKeywordsParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetTrendingKeywordsOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let within_hours = params.within_hours.unwrap_or(24);
     let limit = clamp_limit(params.limit, 20);
 
@@ -617,9 +624,10 @@ pub async fn get_trending_keywords(
 
 /// GET /xrpc/app.changala.globalview.getTrendingBrainTags
 pub async fn get_trending_brain_tags(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetTrendingBrainTagsParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetTrendingBrainTagsOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let within_days = params.within_days.unwrap_or(7);
     let limit = clamp_limit(params.limit, 20) as usize;
 
@@ -693,9 +701,10 @@ pub async fn get_trending_brain_tags(
 /// MVP: Since we cannot read the ATProto social graph yet, returns the
 /// most popular courses by total enrollment count as a proxy.
 pub async fn get_followed_enrollments(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetFollowedEnrollmentsParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetFollowedEnrollmentsOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 20);
 
     let sql = "SELECT e.course_uri, c.title, COUNT(*) as cnt \
@@ -738,9 +747,10 @@ pub async fn get_followed_enrollments(
 
 /// GET /xrpc/app.changala.globalview.getGlobalArchiveFeed
 pub async fn get_global_archive_feed(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewGetGlobalArchiveFeedParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetGlobalArchiveFeedOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
 

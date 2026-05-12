@@ -1,12 +1,12 @@
 //! Session service handlers — lifecycle management.
 
+use atrg_auth::RequireAuth;
+use atrg_core::AppState;
 use atrg_repo::Tid;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::Json;
 use chrono::{Duration, Utc};
-
-use atrg_auth::RequireAuth;
 
 use changala_shared::types::*;
 
@@ -220,10 +220,11 @@ fn into_reschedule_output(v: SessionViewFields) -> AppChangalaRingRescheduleSess
 ///
 /// Creates a new session for a course with status `scheduled`.
 pub async fn create_session(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateSessionInput>,
 ) -> Result<Json<AppChangalaRingCreateSessionOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_class_rep_or_admin(&app.db, &session.did, &input.course_uri).await?;
 
@@ -292,9 +293,10 @@ pub async fn create_session(
 /// Fetches a single session by AT URI. The `keyword_window_open` field is
 /// computed dynamically from `keyword_window_expires_at` vs current time.
 pub async fn get_session(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetSessionParams>,
 ) -> Result<Json<AppChangalaRingGetSessionOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let row = require_session_row(&app.db, &params.uri).await?;
     Ok(Json(into_get_output(session_view(&row))))
 }
@@ -304,9 +306,10 @@ pub async fn get_session(
 /// Lists sessions for a course with optional status filtering and cursor-based
 /// pagination. Default limit 50, max 100.
 pub async fn list_sessions(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingListSessionsParams>,
 ) -> Result<Json<AppChangalaRingListSessionsOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let limit = params.limit.unwrap_or(50).clamp(1, 100);
 
     let mut sql = format!("SELECT {SESSION_COLS} FROM sessions WHERE course_uri = $1");
@@ -379,10 +382,11 @@ pub async fn list_sessions(
 /// Transitions a session from `scheduled` → `live`. Sets `opened_at` to
 /// the current time.
 pub async fn open_session(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingOpenSessionInput>,
 ) -> Result<Json<AppChangalaRingOpenSessionOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     let course_uri = auth::get_course_for_session(&app.db, &input.session_uri).await?;
     auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;
@@ -422,10 +426,11 @@ pub async fn open_session(
 /// Transitions a session from `live` → `ended`. Sets `closed_at` and opens
 /// a 60-minute keyword submission window.
 pub async fn close_session(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCloseSessionInput>,
 ) -> Result<Json<AppChangalaRingCloseSessionOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     let course_uri = auth::get_course_for_session(&app.db, &input.session_uri).await?;
     auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;
@@ -474,10 +479,11 @@ pub async fn close_session(
 ///
 /// Cancels a session. Valid from `scheduled` or `live` status.
 pub async fn cancel_session(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCancelSessionInput>,
 ) -> Result<Json<AppChangalaRingCancelSessionOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     let course_uri = auth::get_course_for_session(&app.db, &input.session_uri).await?;
     auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;
@@ -511,10 +517,11 @@ pub async fn cancel_session(
 ///
 /// Reschedules a session. Valid only from `scheduled` status.
 pub async fn reschedule_session(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRescheduleSessionInput>,
 ) -> Result<Json<AppChangalaRingRescheduleSessionOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     let course_uri = auth::get_course_for_session(&app.db, &input.session_uri).await?;
     auth::require_class_rep_or_admin(&app.db, &session.did, &course_uri).await?;

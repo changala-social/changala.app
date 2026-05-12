@@ -72,28 +72,63 @@ One canonical Global View will be deployed at `changala.app` post-MVP. In MVP it
 
 ---
 
-## 3. Lexicon Strategy — at-rust-go Auto-generation
+## 3. Framework Strategy — at-rust-go (atrg) 0.2.0
 
 **Lexicon JSON files are the source of truth. Rust types are auto-generated from them.**
 
-`at-rust-go` generates Rust structs, serialisation, and ATProto validation code directly from lexicon JSON files. This means:
+`at-rust-go` (atrg) is the batteries-included backend framework Changala is built on. As of **v0.2.0** (released 2026-05-12), the framework provides far more than just codegen — it is the full application runtime.
 
-- We do **not** hand-write Rust data types for ATProto records
-- We **do** hand-write gRPC service definitions (`.proto` files) for the Ring and Global View RPC surfaces
-- The proto service definitions reference generated types by name where needed
+### 3.1 What atrg Provides Natively
 
-### Build pipeline:
+| Capability | atrg Crate | Changala Usage |
+|---|---|---|
+| **Lexicon codegen** | `atrg-codegen` | 74 lexicon JSON files → 156 Rust structs, 62 handler stubs |
+| **OAuth + Session management** | `atrg-auth` | AT Protocol OAuth login/logout, session cookies, JWT verification |
+| **API Key authentication** | `atrg-auth` | `chg_*` prefixed keys for MCP and programmatic access |
+| **RBAC (roles + bans)** | `atrg-auth` | `has_role`, `grant_role`, `revoke_role`, `ban_did`, `lift_ban` with TTL |
+| **Blob storage** | `atrg-blob` | S3-compatible content-addressed storage (`BlobStore` trait) |
+| **Email / OTP** | `atrg-email` | SMTP delivery + two-step OTP verification flow |
+| **Jetstream consumer** | `atrg-stream` | Firehose subscription with backpressure, reconnection, ZSTD |
+| **Event router** | `atrg-stream` | `EventRouterBuilder` — typed dispatch by collection + operation |
+| **Cursor persistence** | `atrg-stream` | Auto-save/resume last processed event across restarts |
+| **XRPC endpoints** | `atrg-xrpc` | AT Protocol error envelope, route helpers |
+| **DID/handle resolution** | `atrg-identity` | TTL-backed cache for identity lookups |
+| **AppState extensions** | `atrg-core` | Type-safe app state via `with_extension::<T>()` — no `once_cell` |
+| **App-specific config** | `atrg-core` | `load_app_config::<T>("changala")` from `atrg.toml` |
+| **Migration isolation** | `atrg-db` | Separate tracking tables per binary (`_ring_migrations`, `_aggregator_migrations`) |
+| **Admin bootstrap** | `atrg-core` | `[app] admin_dids` auto-provisions admin roles on startup |
+| **Cross-origin auth** | `atrg-auth` | `[auth] post_login_redirect` for SPA token handoff |
+| **Rate limiting** | `atrg-core` | Per-IP token-bucket middleware from `[rate_limit]` config |
+| **Feed generator** | `atrg-feed` | Feed skeleton XRPC routes (if needed post-MVP) |
+| **Label service** | `atrg-label` | Label creation, signing, storage, query |
+| **Testing utilities** | `atrg-testing` | Mock clients, fake Jetstream, in-memory test state |
+| **Multi-binary scaffold** | `atrg-cli` | `atrg new --template multi-binary` (write server + aggregator) |
+
+### 3.2 What Changala Hand-Writes
+
+Only **business logic** — the domain-specific parts that no framework can provide:
+
+- Handler implementations (course lifecycle, session management, note workflows, brain graph, archive pipeline)
+- SQL queries and migrations (16 tables, domain-specific schemas)
+- Permission logic beyond basic RBAC (e.g. "class rep for *this specific course*")
+- Firehose materialisation logic (what to index, how to aggregate)
+- Notification dispatch rules
+
+### 3.3 Build Pipeline
+
 ```
-lexicons/app/changala/*.json
+lexicons/app/changala/*.json    (74 files — records + XRPC procedures/queries)
         │
-        ▼  (at-rust-go codegen)
-src/generated/*.rs          ← ATProto record types, validators
+        ▼  (atrg generate)
+crates/changala-shared/src/generated/
+        ├── types.rs             ← 156 ATProto record types + validators
+        └── routes.rs            ← 62 Axum handler stubs with typed I/O
         │
-src/ring/services/*.rs      ← Ring gRPC service implementations
-src/globalview/services/*.rs ← Global View gRPC service implementations
+crates/changala-ring/src/        ← Ring handler implementations (write server)
+crates/changala-aggregator/src/  ← Aggregator handler implementations (read layer)
 ```
 
-Lexicons live in `lexicons/` at the repo root. Proto service definitions live in `proto/`. Both are checked in. Generated code goes in `src/generated/` and is gitignored.
+Lexicons live in `lexicons/` at the repo root. Proto files are preserved as reference documentation in `docs/proto/`. Generated code goes in `crates/changala-shared/src/generated/` and is gitignored.
 
 ---
 
@@ -500,20 +535,34 @@ Two binaries. Service definitions in `.proto` files. Record types auto-generated
 | **Moderation** | Instance-side deny list (DID + optional TTL) | Pragmatic for MVP; ATProto labels are long-term path |
 | **Labels** | `app.changala.label` — ATProto-native quality signal | Portable, verifiable |
 | **Offline draft sync** | Backend accepts timestamp-preserving writes within semester | Client queues; Ring enforces semester boundary |
+| **Framework version** | atrg 0.2.0 — batteries-included | Native API keys, RBAC, blob storage, email/OTP, event router, cursor persistence, admin bootstrap, cross-origin auth, AppState extensions, migration isolation |
+| **State management** | `AtrgApp::with_extension::<T>()` — no `once_cell` globals | Framework-managed typed state, accessible via `state.extension::<T>()` in handlers |
+| **API key auth** | Native `atrg-auth` API keys (`chg_*` prefix) | No more synthetic session upserts; `RequireAuth` handles API keys transparently |
+| **RBAC** | `atrg-auth` RBAC (`has_role`, `grant_role`, `ban_did`) | Replace hand-rolled SQL role checks with framework-provided functions |
+| **Blob storage** | `atrg-blob` S3BlobStore | Replace custom 97-line blob module with framework `BlobStore` trait |
+| **Email delivery** | `atrg-email` SMTP + OTP | Replace custom 78-line email module with framework `send_otp`/`verify_otp` |
+| **Migration isolation** | `run_isolated_migrations` with per-binary tracking tables | Replace custom 40-line migration runners in both binaries |
+| **Cross-origin auth** | `[auth] post_login_redirect` config | Replace custom `/auth/complete` endpoint with framework config |
+| **Admin bootstrap** | `[app] admin_dids` config + env var | Replace manual startup provisioning SQL |
+| **App config** | `load_app_config::<ChangalaConfig>("changala")` | Replace manual TOML parsing + 80-line `apply_env_overrides()` |
+| **Event routing** | `EventRouterBuilder` with `.on_create()` per collection | Replace manual match-dispatch in aggregator `events.rs` |
 
 ---
 
 ## 19. Next Steps
 
-- [ ] Add `app.changala.brain.node` and `app.changala.brain.link` lexicon JSON files
-- [ ] Add `BrainService` and `GraphService` proto definitions
-- [ ] Set up `at-rust-go` project scaffold and point it at the lexicons directory
-- [ ] Implement Ring: `IdentityService` + `CourseService` as first milestone
-- [ ] Implement Global View: Jetstream subscriber + keyword histogram materialisation as first milestone
+- [x] ~~Add `app.changala.brain.node` and `app.changala.brain.link` lexicon JSON files~~
+- [x] ~~Set up `at-rust-go` project scaffold and point it at the lexicons directory~~
+- [x] ~~Implement Ring: `IdentityService` + `CourseService` as first milestone~~
+- [x] ~~Implement Global View: Jetstream subscriber + keyword histogram materialisation as first milestone~~
+- [ ] **Migrate to atrg 0.2.0** — replace ~800 lines of hand-written framework workarounds with native atrg features (see ROADMAP.md Phase 8.6)
+- [ ] Complete identity, email verification & RBAC using atrg-native modules (see ROADMAP.md Phase 8.5)
 - [ ] Define archival export bundle format (LaTeX + markdown, `archive.org` metadata schema)
+- [ ] Binary split into Cargo workspace (see ROADMAP.md Phase 9)
 
 ---
 
 *Document generated from brainstorm session — May 2026. Living document, subject to revision.*
 *Renamed from Honey Heave → **Changala** (chain, in Malayalam).*
 *Brain layer added: Zettelkasten-style public second brain for every student.*
+*atrg 0.2.0 migration plan added — May 2026.*

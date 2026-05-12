@@ -1,8 +1,9 @@
 //! Search handlers — full-text search across notes, courses, brain nodes, archives.
 
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::Json;
 
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
@@ -35,9 +36,10 @@ fn like_pattern(q: &str) -> String {
 /// Searches notes by `summary ILIKE '%q%'`. Optionally filters by course_uri
 /// via session JOIN, or by semester via course JOIN.
 pub async fn search_notes(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewSearchNotesParams>,
 ) -> Result<Json<AppChangalaGlobalviewSearchNotesOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let pattern = like_pattern(&params.q);
@@ -142,7 +144,7 @@ pub async fn search_notes(
 
     // Batch-fetch labels.
     let note_uris: Vec<String> = rows.iter().map(|r| r.get::<String, _>("uri")).collect();
-    let labels_map = batch_fetch_labels(&note_uris).await?;
+    let labels_map = batch_fetch_labels(&note_uris, &app.db).await?;
 
     let notes: Vec<serde_json::Value> = rows
         .iter()
@@ -186,9 +188,10 @@ pub async fn search_notes(
 
 /// GET /xrpc/app.changala.globalview.searchCourses
 pub async fn search_courses(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewSearchCoursesParams>,
 ) -> Result<Json<AppChangalaGlobalviewSearchCoursesOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let pattern = like_pattern(&params.q);
@@ -302,9 +305,10 @@ pub async fn search_courses(
 
 /// GET /xrpc/app.changala.globalview.searchArchive
 pub async fn search_archive(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewSearchArchiveParams>,
 ) -> Result<Json<AppChangalaGlobalviewSearchArchiveOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let pattern = like_pattern(&params.q);
@@ -415,9 +419,10 @@ pub async fn search_archive(
 
 /// GET /xrpc/app.changala.globalview.searchBrainNodes
 pub async fn search_brain_nodes(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaGlobalviewSearchBrainNodesParams>,
 ) -> Result<Json<AppChangalaGlobalviewSearchBrainNodesOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
     let pattern = like_pattern(&params.q);
@@ -558,14 +563,13 @@ pub async fn search_brain_nodes(
 
 async fn batch_fetch_labels(
     uris: &[String],
+    db: &sqlx::PgPool,
 ) -> Result<std::collections::HashMap<String, Vec<serde_json::Value>>, XrpcError> {
     use sqlx::Row;
 
     if uris.is_empty() {
         return Ok(std::collections::HashMap::new());
     }
-
-    let app = crate::state::get();
 
     let placeholders: Vec<String> = (1..=uris.len()).map(|i| format!("${i}")).collect();
     let sql = format!(
@@ -579,7 +583,7 @@ async fn batch_fetch_labels(
         q = q.bind(uri);
     }
 
-    let rows: Vec<sqlx::postgres::PgRow> = q.fetch_all(&app.db).await.map_err(|e| XrpcError {
+    let rows: Vec<sqlx::postgres::PgRow> = q.fetch_all(db).await.map_err(|e| XrpcError {
         name: XrpcErrorName::InternalServerError,
         message: format!("Failed to fetch labels: {e}"),
     })?;

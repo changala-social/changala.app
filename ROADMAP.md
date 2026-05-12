@@ -243,7 +243,12 @@ Changala has **two layers**, **three runtime components**, and ships as
 
 ---
 
-## Phase 8.5: Identity, Email Verification & RBAC 🔜 NEXT
+## Phase 8.5: Identity, Email Verification & RBAC 🔜 NEXT (simplified by atrg 0.2.0)
+
+> **Prerequisite: Complete Phase 8.6 (atrg 0.2.0 migration) first.**
+> Most infrastructure work in this phase (SMTP, OTP, RBAC, admin provisioning)
+> is now provided by `atrg-email` and `atrg-auth`. This phase reduces to
+> wiring the framework modules + Changala-specific business logic only.
 
 > User identity tiers, institution email verification with domain allowlists,
 > SMTP-based OTP delivery (Gmail app password), and admin provisioning.
@@ -399,6 +404,285 @@ Support for MCP
 - [ ] Distinguish "logged in but not verified" vs "verified member" in UI
 
 **Ref:** See `RBAC.md` for the full permission matrix.
+
+---
+
+## Phase 8.6: atrg 0.2.0 Migration 🔥 CRITICAL — DO FIRST
+
+> **This phase should be completed BEFORE Phase 8.5 and Phase 9.**
+> atrg 0.2.0 provides native implementations of most features planned in Phase 8.5
+> (email/OTP, RBAC, API keys, admin bootstrap) and Phase 9 (migration isolation,
+> multi-binary template). Migrating first avoids building on deprecated patterns.
+
+### Why Migrate Now
+
+atrg 0.2.0 (released 2026-05-12) adds 11 features that directly replace hand-written
+Changala code. Continuing to build on v0.1.x means maintaining ~800 lines of workarounds
+that the framework now handles natively. Every new feature built on v0.1.x patterns
+increases migration cost.
+
+**Crates published in v0.2.0:**
+
+| Crate | Version | Status |
+|---|---|---|
+| `atrg-core` | 0.2.0 | Breaking: `AppState` gains `extensions` field, `AppConfig` gains `admin_dids` |
+| `atrg-auth` | 0.2.0 | Breaking: `AuthSource::ApiKey` variant added. New: API keys, RBAC, bans |
+| `atrg-db` | 0.2.0 | Breaking: `run_user_migrations` deprecated → `run_isolated_migrations` |
+| `atrg-stream` | 0.2.0 | Breaking: `StreamConfig` gains `cursor` field. New: `EventRouterBuilder`, cursor persistence |
+| `atrg-blob` | 0.2.0 | **NEW** — `BlobStore` trait, `S3BlobStore`, `FileBlobStore`, `compute_cid()` |
+| `atrg-email` | 0.2.0 | **NEW** — SMTP via lettre, `send_otp`/`verify_otp`, domain validation |
+| `atrg-xrpc` | 0.2.0 | No breaking changes |
+| `atrg-identity` | 0.2.0 | No breaking changes |
+| `atrg-repo` | 0.2.0 | No breaking changes |
+| `atrg-codegen` | 0.2.0 | No breaking changes |
+| `atrg-feed` | 0.2.0 | No breaking changes |
+| `atrg-label` | 0.2.0 | No breaking changes |
+| `atrg-testing` | 0.2.0 | Updated for new `AppState` shape |
+| `atrg-firehose` | 0.2.0 | No breaking changes |
+| `atrg-cli` | 0.2.0 | New: `--template multi-binary` |
+
+### 8.6.1 Code to Delete / Replace
+
+| Current Code | Lines | Replacement | atrg Feature |
+|---|---|---|---|
+| `crates/changala-ring/src/state.rs` (OnceCell singleton) | 44 | `AtrgApp::with_extension::<Changala>()` | AppState Extensions |
+| `crates/changala-aggregator/src/state.rs` (OnceCell singleton) | 27 | `AtrgApp::with_extension::<Aggregator>()` | AppState Extensions |
+| `~40 call sites` of `crate::state::get()` across all handlers | pervasive | `state.extension::<T>()` via Axum `State` extractor | AppState Extensions |
+| `crates/changala-ring/src/blob.rs` (S3BlobStore + compute_cid) | 97 | `atrg_blob::S3BlobStore` | atrg-blob |
+| `crates/changala-ring/src/email.rs` (SMTP + OTP) | 78 | `atrg_email::send_otp()` / `verify_otp()` | atrg-email |
+| `crates/changala-ring/src/api_key_auth.rs` (middleware bridge) | 153 | Native `RequireAuth` API key support | atrg-auth API Keys |
+| `Ring main.rs: run_changala_migrations()` | ~40 | `atrg_db::run_isolated_migrations(pool, dir, "_ring_migrations")` | Migration Isolation |
+| `Aggregator main.rs: run_aggregator_migrations()` | ~40 | `atrg_db::run_isolated_migrations(pool, dir, "_aggregator_migrations")` | Migration Isolation |
+| `Ring main.rs: ChangalaConfig::apply_env_overrides()` | ~80 | `atrg_core::config::load_app_config::<ChangalaConfig>("changala")` | App-Specific Config |
+| `Ring main.rs: admin DID provisioning` | ~20 | `[app] admin_dids` config + `ATRG_APP__ADMIN_DIDS` env var | Admin Bootstrap |
+| `Ring main.rs: bootstrap API key provisioning` | ~30 | `atrg_auth::api_keys::create_api_key()` at startup | atrg-auth API Keys |
+| `handlers/auth.rs` (hand-rolled RBAC) | 172 | `atrg_auth::rbac::has_role()`, `grant_role()`, `ban_did()` | RBAC |
+| `handlers/apikeys.rs` (hand-rolled API key CRUD) | 216 | `atrg_auth::api_keys::create_api_key()`, `list_api_keys()`, `revoke_api_key()` | atrg-auth API Keys |
+| Aggregator `events.rs` match-dispatch boilerplate | ~50 | `EventRouterBuilder::new().on_create("app.changala.keyword", handler)` | Event Router |
+| Custom `/auth/complete` cross-origin endpoint | ~60 | `[auth] post_login_redirect = "https://changala-app.pages.dev/login"` | Cross-Origin Auth |
+| **Total** | **~800+** | — | — |
+
+### 8.6.2 Migration Steps (Ordered)
+
+These steps must be done in order — each builds on the previous.
+
+#### Step 1: Bump atrg dependencies
+
+- [ ] Update `Cargo.toml` workspace dependencies from `0.1.3` to `0.2.0`
+- [ ] Add new dependencies: `atrg-blob = "0.2.0"`, `atrg-email = "0.2.0"`
+- [ ] Remove `once_cell` from workspace dependencies
+- [ ] Remove `lettre` from workspace dependencies (now in `atrg-email`)
+- [ ] Remove `sha2` and `hex` from workspace dependencies (now in `atrg-blob`)
+- [ ] Run `cargo build` — expect compilation errors (this is the starting point)
+
+#### Step 2: Fix AppState breaking changes
+
+- [ ] Add `extensions: Arc::new(Extensions::new())` to any direct `AppState` construction (tests)
+- [ ] Add `admin_dids: vec![]` to any direct `AppConfig` construction (tests)
+- [ ] Add `cursor: None` to any direct `StreamConfig` construction
+- [ ] Add `AuthSource::ApiKey` arm to any exhaustive matches on `AuthSource`
+
+#### Step 3: Replace state management (`once_cell` → Extensions)
+
+- [ ] Define `ChangalaState` struct (replaces `Changala` in `state.rs`):
+  ```
+  struct ChangalaState {
+      db: PgPool,
+      blobs: Arc<atrg_blob::S3BlobStore>,
+      smtp: Option<atrg_email::SmtpConfig>,
+      allowed_email_domains: Vec<String>,
+  }
+  ```
+- [ ] Register in Ring `main.rs`: `AtrgApp::new().with_extension(changala_state)`
+- [ ] Define `AggregatorState` struct (replaces `Aggregator` in `state.rs`):
+  ```
+  struct AggregatorState { db: PgPool }
+  ```
+- [ ] Register in Aggregator `main.rs`: `AtrgApp::new().with_extension(aggregator_state)`
+- [ ] Replace all `crate::state::get()` calls with `state.extension::<ChangalaState>()`
+  (or `state.extension::<AggregatorState>()` in aggregator handlers)
+- [ ] Delete `crates/changala-ring/src/state.rs`
+- [ ] Delete `crates/changala-aggregator/src/state.rs`
+- [ ] Remove `once_cell` from all `Cargo.toml` files
+
+#### Step 4: Replace blob storage
+
+- [ ] Replace `crate::blob::S3BlobStore` with `atrg_blob::S3BlobStore`
+- [ ] Replace `crate::blob::compute_cid()` with `atrg_blob::compute_cid()`
+- [ ] Update `ChangalaState` to use `atrg_blob::S3BlobStore`
+- [ ] Verify CID format compatibility (`sha256-` prefix — both use the same scheme)
+- [ ] Update `brain.rs` and `note.rs` handler imports
+- [ ] Delete `crates/changala-ring/src/blob.rs`
+- [ ] Remove `rust-s3`, `sha2`, `hex` from `changala-ring/Cargo.toml` (now transitive via `atrg-blob`)
+
+#### Step 5: Replace email / OTP
+
+- [ ] Replace `crate::email::send_otp_email()` with `atrg_email::send_otp()`
+- [ ] Replace OTP verification logic in `identity.rs` with `atrg_email::verify_otp()`
+- [ ] Replace `crate::email::SmtpConfig` with atrg-email's config (loaded via `load_app_config`)
+- [ ] Use `atrg_email::validate_domain()` for email domain allowlist checks
+- [ ] Verify dev-mode fallback (atrg-email logs OTPs to stdout when SMTP not configured)
+- [ ] Delete `crates/changala-ring/src/email.rs`
+- [ ] Remove `lettre` from `changala-ring/Cargo.toml` (now transitive via `atrg-email`)
+
+#### Step 6: Replace migration runners
+
+- [ ] Replace `run_changala_migrations()` in Ring `main.rs` with:
+  `atrg_db::run_isolated_migrations(&pool, Path::new("./ring_migrations"), "_ring_migrations")`
+- [ ] Replace `run_aggregator_migrations()` in Aggregator `main.rs` with:
+  `atrg_db::run_isolated_migrations(&pool, Path::new("./aggregator_migrations"), "_aggregator_migrations")`
+- [ ] **CRITICAL**: Before first startup, copy existing migration tracking rows:
+  ```sql
+  INSERT INTO _ring_migrations (version, description, checksum, applied_at)
+  SELECT version, description, checksum, installed_on FROM _changala_migrations
+  WHERE version NOT IN (SELECT version FROM _ring_migrations);
+  ```
+- [ ] Delete the custom migration runner functions from both `main.rs` files
+
+#### Step 7: Replace API key authentication
+
+- [ ] Delete `crates/changala-ring/src/api_key_auth.rs`
+- [ ] Replace `handlers/apikeys.rs` to use `atrg_auth::api_keys::*`:
+  - `create_api_key` → `atrg_auth::api_keys::create_api_key(&pool, did, name, scopes, "chg_")`
+  - `list_api_keys` → `atrg_auth::api_keys::list_api_keys(&pool, did)`
+  - `revoke_api_key` → `atrg_auth::api_keys::revoke_api_key(&pool, prefix)`
+- [ ] Remove `api_key_auth_middleware` from route mounting in Ring `main.rs`
+  (atrg `RequireAuth` now handles `chg_*` tokens natively)
+- [ ] Remove `mcp_gate_middleware` — replace with `RequireAuth` on MCP routes
+- [ ] Verify MCP server still works with API key auth
+- [ ] **CRITICAL**: Create RBAC DDL tables before using RBAC functions:
+  `atrg_auth::rbac::CREATE_ROLES_TABLE_POSTGRES`
+  `atrg_auth::rbac::CREATE_BANS_TABLE_POSTGRES`
+
+#### Step 8: Replace RBAC / auth helpers
+
+- [ ] Replace `handlers/auth.rs` helper functions with `atrg_auth::rbac::*`:
+  - `check_not_banned(did)` → `atrg_auth::rbac::is_banned(&pool, did)`
+  - `get_role(did)` → `atrg_auth::rbac::has_role(&pool, did, role, resource)`
+  - `require_role("admin")` → `atrg_auth::rbac::has_role(&pool, did, "admin", None)`
+- [ ] Keep domain-specific helpers that combine RBAC with business logic:
+  - `require_enrolled` — checks enrollment table (not pure RBAC)
+  - `require_institution_member` — checks membership table
+  - `require_class_rep_or_admin` — checks role scoped to a course
+  - `get_course_for_session` — pure data lookup
+- [ ] Refactor `handlers/auth.rs` to be a thin wrapper over `atrg_auth::rbac`
+
+#### Step 9: Replace config loading + env overrides
+
+- [ ] Define `ChangalaConfig` using `serde::Deserialize` (already exists)
+- [ ] Replace manual TOML parsing with `atrg_core::config::load_app_config::<ChangalaConfig>("changala")`
+- [ ] Delete `ChangalaConfig::apply_env_overrides()` method (~80 lines)
+- [ ] Use atrg's automatic env var overlay (`ATRG_CHANGALA__*` convention) or
+  keep a minimal `apply_env_overrides()` for `CHANGALA_*` backward compatibility
+- [ ] Replace admin bootstrap logic with `[app] admin_dids` config
+
+#### Step 10: Replace cross-origin auth
+
+- [ ] Add to `atrg.toml`:
+  ```toml
+  [auth]
+  post_login_redirect = "https://changala-app.pages.dev/login"
+  ```
+- [ ] Remove custom `/auth/complete` endpoint handler from Ring routes
+- [ ] Verify frontend receives `?token=&did=&handle=` query params after OAuth
+
+#### Step 11: Replace event router (Aggregator)
+
+- [ ] Replace manual match-dispatch in `events.rs` with `EventRouterBuilder`:
+  ```rust
+  let router = EventRouterBuilder::new()
+      .on_create("app.changala.keyword", handle_keyword)
+      .on_create("app.changala.note", handle_note)
+      .on_create("app.changala.vote", handle_vote)
+      .on_create("app.changala.brain.node", handle_brain_node)
+      .on_create("app.changala.brain.link", handle_brain_link)
+      .build();
+  ```
+- [ ] Keep materialisation logic in individual handler functions (domain-specific)
+- [ ] Enable cursor persistence: set `cursor = "auto"` in `[jetstream]` config
+
+#### Step 12: Verification
+
+- [ ] `cargo build` — zero errors, zero warnings
+- [ ] `cargo clippy -- -D warnings` — clean
+- [ ] Run full test suite
+- [ ] Verify OAuth login flow works end-to-end
+- [ ] Verify API key auth works for MCP
+- [ ] Verify OTP email delivery (or dev-mode stdout logging)
+- [ ] Verify firehose subscription + materialisation in Aggregator
+- [ ] Verify blob upload/download in Ring
+- [ ] Smoke test all 62 XRPC endpoints
+
+### 8.6.3 Dependency Changes
+
+**Before (v0.1.3):**
+
+```toml
+[workspace.dependencies]
+atrg-core = { version = "0.1.3", default-features = false, features = ["postgres"] }
+atrg-auth = { version = "0.1.3", default-features = false, features = ["postgres"] }
+atrg-db = { version = "0.1.3", default-features = false, features = ["postgres"] }
+atrg-xrpc = "0.1.3"
+atrg-stream = "0.1.3"
+atrg-repo = "0.1.3"
+atrg-identity = "0.1.3"
+
+# Hand-written replacements for missing framework features:
+rust-s3 = "0.35"        # → replaced by atrg-blob
+sha2 = "0.10"           # → replaced by atrg-blob
+hex = "0.4"             # → replaced by atrg-blob
+lettre = "0.11"         # → replaced by atrg-email
+once_cell = "1"         # → replaced by AppState Extensions
+```
+
+**After (v0.2.0):**
+
+```toml
+[workspace.dependencies]
+atrg-core = { version = "0.2.0", default-features = false, features = ["postgres"] }
+atrg-auth = { version = "0.2.0", default-features = false, features = ["postgres"] }
+atrg-db = { version = "0.2.0", default-features = false, features = ["postgres"] }
+atrg-xrpc = "0.2.0"
+atrg-stream = "0.2.0"
+atrg-repo = "0.2.0"
+atrg-identity = "0.2.0"
+atrg-blob = "0.2.0"     # NEW — replaces hand-written blob.rs
+atrg-email = "0.2.0"    # NEW — replaces hand-written email.rs
+atrg-testing = "0.2.0"  # NEW — for handler tests
+
+# REMOVED:
+# rust-s3 = "0.35"      — now transitive via atrg-blob
+# sha2 = "0.10"         — now transitive via atrg-blob
+# hex = "0.4"           — now transitive via atrg-blob
+# lettre = "0.11"       — now transitive via atrg-email
+# once_cell = "1"       — replaced by AppState Extensions
+```
+
+### 8.6.4 Database Migration Considerations
+
+- **Migration tracking tables**: atrg 0.2.0 uses `_atrg_migrations` for framework tables.
+  Changala's Ring uses `_changala_migrations` and the Aggregator uses `_changala_aggregator_migrations`.
+  After upgrade, switch to `run_isolated_migrations` and use `_ring_migrations` / `_aggregator_migrations`.
+  The old tracking tables remain in the DB but are no longer consulted. Copy rows if migrations
+  are NOT idempotent (Changala's use `CREATE TABLE IF NOT EXISTS`, so re-application is safe).
+
+- **New framework tables**: atrg 0.2.0's RBAC module requires `atrg_roles` and `atrg_bans` tables.
+  These are NOT auto-created — use the DDL constants from `atrg_auth::rbac::CREATE_*_TABLE_POSTGRES`.
+  Add a migration file that creates these tables.
+
+- **API key table**: atrg's API key module uses its own table schema. Compare with Changala's existing
+  `api_keys` table and either migrate data or start fresh (recommended for MVP).
+
+### 8.6.5 Risk Assessment
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| CID format mismatch (atrg-blob vs custom) | 🔴 High | Verify both use `sha256-{hex}` prefix before migration. If different, write a one-time blob re-key migration. |
+| API key format change | 🟡 Medium | Regenerate all API keys after migration. Notify MCP users. |
+| Migration tracking table confusion | 🟡 Medium | Document which tables are active. Drop old tracking tables after verification. |
+| RBAC table schema mismatch | 🟡 Medium | Compare atrg's DDL with Changala's existing schema. Add ALTER TABLE if needed. |
+| `apply_env_overrides()` backward compatibility | 🟢 Low | Keep `CHANGALA_*` env vars working via a thin compatibility shim until k8s configs are updated. |
+| Firehose cursor format change | 🟢 Low | Start from `"live"` on first run after upgrade. Historical events will be re-processed (materialisation is idempotent). |
 
 ---
 
@@ -628,7 +912,12 @@ They do NOT get a dedicated UI. Their users access the shared frontend at
 
 ---
 
-## Phase 10: API Keys & MCP Server 💡 PLANNED
+## Phase 10: API Keys & MCP Server 💡 PLANNED (simplified by atrg 0.2.0)
+
+> **API key infrastructure is now framework-provided by atrg 0.2.0.**
+> `atrg-auth` provides `create_api_key`, `list_api_keys`, `revoke_api_key`,
+> and transparent `RequireAuth` integration for API key tokens.
+> This phase reduces to MCP tool definitions and admin UX only.
 
 > First-class MCP (Model Context Protocol) support on the Ring for AI-powered
 > institution management. Eliminates manual frontend labour for bootstrapping,

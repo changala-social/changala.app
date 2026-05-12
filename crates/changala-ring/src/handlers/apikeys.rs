@@ -1,7 +1,9 @@
 //! API key management handlers.
 
 use atrg_auth::RequireAuth;
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
+use axum::extract::State;
 use axum::Json;
 use base64::Engine;
 use rand::Rng;
@@ -15,7 +17,7 @@ use crate::handlers::auth;
 fn generate_api_key() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill(&mut bytes);
-    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&bytes);
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
     format!("chg_{}", encoded)
 }
 
@@ -40,10 +42,11 @@ pub struct CreateApiKeyInput {
 /// POST /xrpc/app.changala.ring.createApiKey
 /// Admin only — creates a new API key.
 pub async fn create_api_key(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<CreateApiKeyInput>,
 ) -> Result<Json<serde_json::Value>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_role(&app.db, &session.did, "admin").await?;
 
@@ -99,9 +102,10 @@ pub async fn create_api_key(
 /// GET /xrpc/app.changala.ring.listApiKeys
 /// Admin only — lists all API keys (prefix + name, never the full key).
 pub async fn list_api_keys(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
 ) -> Result<Json<serde_json::Value>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::require_role(&app.db, &session.did, "admin").await?;
 
     use sqlx::Row;
@@ -144,10 +148,11 @@ pub struct RevokeApiKeyInput {
 /// POST /xrpc/app.changala.ring.revokeApiKey
 /// Admin only — revokes an API key by its prefix.
 pub async fn revoke_api_key(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<RevokeApiKeyInput>,
 ) -> Result<Json<serde_json::Value>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_role(&app.db, &session.did, "admin").await?;
 
@@ -206,7 +211,7 @@ pub async fn find_api_key(
     if row.is_some() {
         // Update last_used_at
         let _ = sqlx::query("UPDATE api_keys SET last_used_at = $1 WHERE key_hash = $2")
-            .bind(&chrono::Utc::now().to_rfc3339())
+            .bind(chrono::Utc::now().to_rfc3339())
             .bind(&hash)
             .execute(db)
             .await;

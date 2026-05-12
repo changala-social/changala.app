@@ -1,9 +1,10 @@
 //! Notification handlers — read and mark notifications.
 
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::Json;
 
 use atrg_auth::RequireAuth;
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
 use serde_json::json;
 
@@ -27,10 +28,11 @@ fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
 /// Returns notifications for the authenticated user.
 /// If `unread_only=true`, filters to unread notifications only.
 pub async fn get_notifications(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Query(params): Query<AppChangalaGlobalviewGetNotificationsParams>,
 ) -> Result<Json<AppChangalaGlobalviewGetNotificationsOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
     let limit = clamp_limit(params.limit, 50);
     let fetch_limit = limit + 1;
 
@@ -119,10 +121,11 @@ pub async fn get_notifications(
 
 /// POST /xrpc/app.changala.globalview.markNotificationRead
 pub async fn mark_notification_read(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaGlobalviewMarkNotificationReadInput>,
 ) -> Result<Json<AppChangalaGlobalviewMarkNotificationReadOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
 
     let result =
         sqlx::query("UPDATE notifications SET read = TRUE WHERE id = $1 AND recipient_did = $2")
@@ -153,10 +156,11 @@ pub async fn mark_notification_read(
 
 /// POST /xrpc/app.changala.globalview.markAllRead
 pub async fn mark_all_read(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(_input): Json<AppChangalaGlobalviewMarkAllReadInput>,
 ) -> Result<Json<AppChangalaGlobalviewMarkAllReadOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::AggregatorState>();
 
     let result = sqlx::query(
         "UPDATE notifications SET read = TRUE WHERE read = FALSE AND recipient_did = $1",

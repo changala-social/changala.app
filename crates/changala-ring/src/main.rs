@@ -1,14 +1,29 @@
 use anyhow::Context;
 use atrg_core::AtrgApp;
 use sqlx::postgres::PgPool;
+use std::path::Path;
 use std::sync::Arc;
 
 mod api_key_auth;
-mod blob;
 mod email;
 mod handlers;
 mod routes;
-mod state;
+
+/// Changala application state — registered as an AppState extension.
+///
+/// Replaces the old `once_cell` singleton. Access in handlers via:
+///   `let app = state.extension::<ChangalaState>();`
+#[derive(Clone, Debug)]
+pub struct ChangalaState {
+    /// PostgreSQL connection pool for all business data.
+    pub db: PgPool,
+    /// S3-compatible blob store for content (notes, brain nodes, archives).
+    pub blobs: Arc<atrg_blob::s3::S3BlobStore>,
+    /// Allowed institution email domains for membership verification.
+    pub allowed_email_domains: Vec<String>,
+    /// Optional SMTP config — None = dev mode (log OTPs to stdout).
+    pub smtp: Option<email::SmtpConfig>,
+}
 
 /// Changala Ring config loaded from atrg.toml [changala] section.
 ///
@@ -28,23 +43,10 @@ mod state;
 ///   CHANGALA_SMTP_PASSWORD   →  [changala.smtp] password
 ///   CHANGALA_SMTP_FROM       →  [changala.smtp] from
 ///   CHANGALA_SMTP_ENCRYPTION →  [changala.smtp] encryption
-///
-/// Framework-level config ([app], [auth], [database]) is overridden
-/// via ATRG_* env vars — see atrg-core's env_override module:
-///   ATRG_APP__NAME           →  [app] name
-///   ATRG_APP__HOST           →  [app] host
-///   ATRG_APP__PORT           →  [app] port
-///   ATRG_APP__SECRET_KEY     →  [app] secret_key
-///   ATRG_APP__CORS_ORIGINS   →  [app] cors_origins  (comma-separated)
-///   ATRG_APP__ENVIRONMENT    →  [app] environment
-///   ATRG_AUTH__CLIENT_ID     →  [auth] client_id
-///   ATRG_AUTH__REDIRECT_URI  →  [auth] redirect_uri
-///   ATRG_AUTH__SCOPE         →  [auth] scope
-///   ATRG_DATABASE__URL       →  [database] url
 #[derive(Debug, serde::Deserialize)]
 struct ChangalaConfig {
     database_url: String,
-    s3: blob::S3Config,
+    s3: atrg_blob::s3::S3Config,
     #[serde(default)]
     smtp: Option<email::SmtpConfig>,
     #[serde(default)]
@@ -163,16 +165,10 @@ impl ChangalaConfig {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Load changala-specific config from atrg.toml
-    let toml_str = std::fs::read_to_string("atrg.toml").context("Failed to read atrg.toml")?;
-    let toml_val: toml::Value = toml::from_str(&toml_str).context("Failed to parse atrg.toml")?;
-    let changala_section = toml_val
-        .get("changala")
-        .context("Missing [changala] section in atrg.toml")?;
-    let mut config: ChangalaConfig = changala_section
-        .clone()
-        .try_into()
-        .context("Invalid [changala] config")?;
+    // Load changala-specific config from atrg.toml [changala] section
+    // atrg 0.2.0: use load_app_config() instead of manual TOML parsing
+    let mut config: ChangalaConfig = atrg_core::config::load_app_config("changala")
+        .context("Failed to load [changala] config from atrg.toml")?;
 
     // Env vars override atrg.toml — for k8s Secrets, docker .env, etc.
     config.apply_env_overrides();
@@ -183,39 +179,32 @@ async fn main() -> anyhow::Result<()> {
         .context("Failed to connect to PostgreSQL")?;
     tracing::info!(url = %config.database_url, "connected to PostgreSQL");
 
-    // Run Changala business migrations (courses, sessions, notes, brain, etc.)
-    //
-    // Why a custom runner instead of `sqlx::migrate!()`?
-    // ---------------------------------------------------
-    // atrg-core runs its own internal SQLx migrations (atrg_sessions,
-    // oauth_states) during `AtrgApp::run()`.  Both migrators share the same
-    // Postgres database and the same `_sqlx_migrations` tracking table.
-    // When atrg's migrator sees changala's version numbers in that table it
-    // errors: "migration N was previously applied but is missing".
-    //
-    // sqlx 0.8 does not expose `set_migration_table_name`, so we run
-    // changala's migrations ourselves against a separate tracking table
-    // (`_changala_migrations`).  The migration directory lives at
-    // `ring_migrations/` (not `migrations/`) so atrg's automatic
-    // `run_user_migrations("./migrations")` call finds nothing to conflict
-    // with.
-    run_changala_migrations(&pg_pool)
-        .await
-        .context("Failed to run changala migrations")?;
-    tracing::info!("applied changala migrations");
+    // Run Changala business migrations using isolated tracking table.
+    // atrg 0.2.0: run_isolated_migrations() replaces the hand-rolled runner.
+    // Uses "_ring_migrations" tracking table so it never conflicts with
+    // atrg-core's internal "_atrg_migrations" table.
+    atrg_db::run_isolated_migrations(
+        &atrg_db::DbPool::Postgres(pg_pool.clone()),
+        Path::new("./ring_migrations"),
+        "_ring_migrations",
+    )
+    .await
+    .context("Failed to run ring migrations")?;
+    tracing::info!("applied ring migrations");
 
-    // Initialize S3 blob store
-    let blobs = blob::S3BlobStore::new(&config.s3).context("Failed to initialize S3 blob store")?;
+    // Initialize S3 blob store (atrg_blob — replaces the custom blob.rs module)
+    let blobs = atrg_blob::s3::S3BlobStore::new(&config.s3)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize S3 blob store: {e}"))?;
     tracing::info!(endpoint = %config.s3.endpoint, bucket = %config.s3.bucket, "S3 blob store ready");
 
-    // Initialize global Changala state
-    state::init(state::Changala {
+    // Build Changala state — registered as an AppState extension via with_extension()
+    // atrg 0.2.0: replaces the once_cell singleton pattern
+    let changala_state = ChangalaState {
         db: pg_pool.clone(),
         blobs: Arc::new(blobs),
         allowed_email_domains: config.allowed_email_domains.clone(),
         smtp: config.smtp.clone(),
-        admin_dids: config.admin_dids.clone(),
-    });
+    };
 
     // Auto-provision admin DIDs from config/env var
     if !config.admin_dids.is_empty() {
@@ -241,6 +230,7 @@ async fn main() -> anyhow::Result<()> {
     // Auto-provision bootstrap API key from env var
     if let Ok(bootstrap_key) = std::env::var("CHANGALA_BOOTSTRAP_API_KEY") {
         if !bootstrap_key.is_empty() {
+            // sha2 and hex come from workspace deps (also used by api_key_auth / apikeys handlers)
             let hash = {
                 use sha2::{Digest, Sha256};
                 format!(
@@ -250,7 +240,6 @@ async fn main() -> anyhow::Result<()> {
             };
             let prefix: String = bootstrap_key.chars().take(12).collect();
             let now = chrono::Utc::now().to_rfc3339();
-            // Find the first admin DID for this key
             let admin_did = config
                 .admin_dids
                 .first()
@@ -279,16 +268,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Start the atrg server — shared PgPool, single database for everything.
-    // with_db_pool() passes our pool to atrg so it runs its own internal
-    // migrations (atrg_sessions, atrg_oauth_states) against the same Postgres.
-    //
-    // NO .on_event() — the Ring is a write server. Firehose subscription
-    // and event materialisation are handled by changala-globalview.
     // Mount MCP server on the Ring when enabled via env var
-    // Note: We can't use nest_service on app_router because AtrgApp::mount()
-    // uses .merge() which panics with nested services in axum 0.8.
-    // Instead, we pass MCP as a separate router to AtrgApp.
     let mcp_enabled = std::env::var("CHANGALA_MCP_ENABLED").unwrap_or_default() == "true";
     if mcp_enabled {
         tracing::info!("MCP server will be mounted at /mcp");
@@ -296,8 +276,12 @@ async fn main() -> anyhow::Result<()> {
 
     let app_router = routes::api();
 
+    // Clone the pool before moving it into the builder — MCP middleware needs it.
+    let mcp_db_pool = pg_pool.clone();
+
     let mut builder = AtrgApp::new()
         .with_db_pool(pg_pool)
+        .with_extension(changala_state)
         .with_auth_routes(atrg_auth::routes::routes())
         .with_cleanup_task(atrg_auth::routes::spawn_cleanup_task)
         .mount(app_router);
@@ -306,81 +290,14 @@ async fn main() -> anyhow::Result<()> {
         let mcp_router = axum::Router::<atrg_core::AppState>::new()
             .route_service("/mcp", changala_mcp::mcp_service())
             .route_service("/mcp/", changala_mcp::mcp_service())
-            .layer(axum::middleware::from_fn(
-                crate::api_key_auth::mcp_gate_middleware,
-            ));
+            .layer({
+                let db = mcp_db_pool.clone();
+                axum::middleware::from_fn(move |req, next| {
+                    crate::api_key_auth::mcp_gate_middleware(db.clone(), req, next)
+                })
+            });
         builder = builder.mount(mcp_router);
     }
 
     builder.run().await
-}
-
-/// Run changala's business-logic migrations using a private tracking table.
-///
-/// Migrations are embedded at compile time from `ring_migrations/` via
-/// the `sqlx::migrate!()` macro.  We record applied versions in
-/// `_changala_migrations` (not the default `_sqlx_migrations`) so that
-/// atrg-core's internal migrator never sees changala-specific entries.
-async fn run_changala_migrations(pool: &PgPool) -> anyhow::Result<()> {
-    // Ensure the tracking table exists.
-    sqlx::raw_sql(
-        "CREATE TABLE IF NOT EXISTS _changala_migrations (
-            version  BIGINT      PRIMARY KEY,
-            description TEXT     NOT NULL,
-            checksum BYTEA       NOT NULL,
-            applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )",
-    )
-    .execute(pool)
-    .await
-    .context("creating _changala_migrations table")?;
-
-    let migrator = sqlx::migrate!("./ring_migrations");
-
-    for migration in migrator.migrations.iter() {
-        let already_applied: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM _changala_migrations WHERE version = $1)",
-        )
-        .bind(migration.version)
-        .fetch_one(pool)
-        .await?;
-
-        if already_applied {
-            continue;
-        }
-
-        sqlx::raw_sql(migration.sql.as_ref())
-            .execute(pool)
-            .await
-            .with_context(|| {
-                format!(
-                    "migration {} ({})",
-                    migration.version, migration.description
-                )
-            })?;
-
-        sqlx::query(
-            "INSERT INTO _changala_migrations (version, description, checksum) \
-             VALUES ($1, $2, $3)",
-        )
-        .bind(migration.version)
-        .bind(migration.description.as_ref())
-        .bind(&*migration.checksum)
-        .execute(pool)
-        .await
-        .with_context(|| {
-            format!(
-                "recording migration {} ({})",
-                migration.version, migration.description
-            )
-        })?;
-
-        tracing::info!(
-            version = migration.version,
-            name = %migration.description,
-            "applied changala migration"
-        );
-    }
-
-    Ok(())
 }

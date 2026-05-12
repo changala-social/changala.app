@@ -1,8 +1,9 @@
 //! Admin provisioning, role management, and audit log handlers.
 
 use atrg_auth::RequireAuth;
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
@@ -57,6 +58,7 @@ pub struct ProvisionAdminInput {
 /// This endpoint does NOT require authentication — it uses the shared secret instead.
 /// This allows bootstrapping the very first admin without database access.
 pub async fn provision_admin(
+    State(state): State<AppState>,
     Json(input): Json<ProvisionAdminInput>,
 ) -> Result<Json<serde_json::Value>, XrpcError> {
     let expected_secret = std::env::var("CHANGALA_ADMIN_SECRET").map_err(|_| XrpcError {
@@ -71,7 +73,7 @@ pub async fn provision_admin(
         });
     }
 
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let now = chrono::Utc::now().to_rfc3339();
     let domain = input.institution_domain.as_deref().unwrap_or("system");
     let institution_did = format!("did:web:{}", domain.replace('.', "-"));
@@ -123,10 +125,11 @@ pub struct RoleChangeInput {
 
 /// POST /xrpc/app.changala.ring.promoteRole
 pub async fn promote_role(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<RoleChangeInput>,
 ) -> Result<Json<serde_json::Value>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_role(&app.db, &session.did, "admin").await?;
 
@@ -185,11 +188,12 @@ pub async fn promote_role(
 
 /// POST /xrpc/app.changala.ring.demoteRole
 pub async fn demote_role(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<RoleChangeInput>,
 ) -> Result<Json<serde_json::Value>, XrpcError> {
     // Reuse promote_role — same logic, different semantic name
-    promote_role(RequireAuth(session), Json(input)).await
+    promote_role(State(state), RequireAuth(session), Json(input)).await
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -204,10 +208,11 @@ pub struct GetAuditLogParams {
 
 /// GET /xrpc/app.changala.ring.getAuditLog
 pub async fn get_audit_log(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Query(params): Query<GetAuditLogParams>,
 ) -> Result<Json<serde_json::Value>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::require_role(&app.db, &session.did, "admin").await?;
 
     let limit = params.limit.unwrap_or(50).clamp(1, 100);

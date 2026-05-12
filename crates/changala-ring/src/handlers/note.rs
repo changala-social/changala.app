@@ -1,10 +1,11 @@
 //! Note service handlers — keywords, notes, collective notes, votes, labels.
 
-use axum::extract::Query;
-use axum::Json;
-
 use atrg_auth::RequireAuth;
+use atrg_blob::BlobStore;
+use atrg_core::AppState;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
+use axum::extract::{Query, State};
+use axum::Json;
 use serde_json::json;
 
 use super::auth;
@@ -27,10 +28,11 @@ const RING_DID: &str = "did:web:ring.changala.local";
 /// The keyword window is open when `keyword_window_expires_at > now()` **or**
 /// the session `status = 'live'`.
 pub async fn add_keyword(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingAddKeywordInput>,
 ) -> Result<Json<AppChangalaRingAddKeywordOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_institution_member(&app.db, &session.did).await?;
 
@@ -112,10 +114,11 @@ pub async fn add_keyword(
 /// Creates a new note (version 1) for a session. Stores a blob reference on
 /// the Ring and returns a `ring_ref` + `note_template` for the PDS record.
 pub async fn create_note(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateNoteInput>,
 ) -> Result<Json<AppChangalaRingCreateNoteOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_institution_member(&app.db, &session.did).await?;
 
@@ -180,10 +183,11 @@ pub async fn create_note(
 /// Creates a new version of an existing note. Inherits session_uri and
 /// author_did from the parent, increments the version counter.
 pub async fn version_note(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingVersionNoteInput>,
 ) -> Result<Json<AppChangalaRingVersionNoteOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = input
@@ -267,9 +271,10 @@ pub async fn version_note(
 ///
 /// Retrieves note content from the Ring by CID using the S3 blob store.
 pub async fn get_note_content(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetNoteContentParams>,
 ) -> Result<Json<AppChangalaRingGetNoteContentOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
 
     let content_bytes = app.blobs.get(&params.cid).await.map_err(|e| XrpcError {
         name: XrpcErrorName::NotFound,
@@ -298,9 +303,10 @@ pub async fn get_note_content(
 /// Returns the full version chain of a note. All versions share the same
 /// session_uri + author_did as the original and are ordered by version.
 pub async fn get_note_history(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetNoteHistoryParams>,
 ) -> Result<Json<AppChangalaRingGetNoteHistoryOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
 
     // First, find the note itself so we can get session_uri + author_did.
     let root = sqlx::query_as::<_, (String, String)>(
@@ -379,10 +385,11 @@ pub async fn get_note_history(
 /// Proposes an edit (diff) to the collective note for a session.
 /// Creates an `edit_proposals` row with status `pending`.
 pub async fn propose_edit(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingProposeEditInput>,
 ) -> Result<Json<AppChangalaRingProposeEditOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_institution_member(&app.db, &session.did).await?;
 
@@ -437,10 +444,11 @@ pub async fn propose_edit(
 /// (auth enforcement is deferred to middleware). Updates the proposal status
 /// and upserts the collective note for the session.
 pub async fn accept_edit(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingAcceptEditInput>,
 ) -> Result<Json<AppChangalaRingAcceptEditOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -550,10 +558,11 @@ pub async fn accept_edit(
 ///
 /// Rejects a pending edit proposal (Class Rep action).
 pub async fn reject_edit(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRejectEditInput>,
 ) -> Result<Json<AppChangalaRingRejectEditOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -608,9 +617,10 @@ pub async fn reject_edit(
 /// Returns the current collective note for a session, including the list
 /// of contributor DIDs (authors of accepted proposals).
 pub async fn get_collective_note(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetCollectiveNoteParams>,
 ) -> Result<Json<AppChangalaRingGetCollectiveNoteOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
 
     let row = sqlx::query_as::<_, (String, String, i64, String)>(
         "SELECT ring_did, cid, version::BIGINT, updated_at FROM collective_notes WHERE session_uri = $1",
@@ -664,9 +674,10 @@ pub async fn get_collective_note(
 /// Lists edit proposals for a session with optional status filter and
 /// cursor-based pagination on `created_at`.
 pub async fn list_edit_proposals(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingListEditProposalsParams>,
 ) -> Result<Json<AppChangalaRingListEditProposalsOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
 
     let limit = params.limit.unwrap_or(50).min(100);
 
@@ -767,10 +778,11 @@ pub async fn list_edit_proposals(
 /// once per subject (enforced by UNIQUE(subject_uri, voter_did)). Returns
 /// the new total vote count.
 pub async fn register_vote(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRegisterVoteInput>,
 ) -> Result<Json<AppChangalaRingRegisterVoteOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -824,10 +836,11 @@ pub async fn register_vote(
 /// Applies a quality/knowledge label to a note or brain node. Labels are
 /// ATProto-native signals stored with `neg = FALSE` (positive assertion).
 pub async fn apply_label(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingApplyLabelInput>,
 ) -> Result<Json<AppChangalaRingApplyLabelOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -859,10 +872,11 @@ pub async fn apply_label(
 /// (`neg = TRUE`). The Global View materialises the effective label state by
 /// checking for negation records.
 pub async fn retract_label(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingRetractLabelInput>,
 ) -> Result<Json<AppChangalaRingRetractLabelOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
 
     let now = chrono::Utc::now().to_rfc3339();

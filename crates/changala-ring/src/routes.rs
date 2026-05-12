@@ -5,8 +5,7 @@
 
 use atrg_core::AppState;
 use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::response::{IntoResponse, Response};
+
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
@@ -26,10 +25,9 @@ pub fn api() -> Router<AppState> {
             "/.well-known/oauth-protected-resource",
             get(well_known_oauth),
         )
-        // Cross-origin session handoff: atrg-auth callback sets an HttpOnly
-        // cookie and redirects here (same origin, so cookie is readable).
-        // We look up the session and redirect to the frontend with token params.
-        .route("/auth/complete", get(auth_complete))
+        // NOTE: Cross-origin session handoff is now handled natively by
+        // atrg 0.2.0's `[auth] post_login_redirect` config in atrg.toml.
+        // The old /auth/complete endpoint has been removed.
         .merge(xrpc_routes())
 }
 
@@ -252,11 +250,8 @@ fn xrpc_routes() -> Router<AppState> {
             "/xrpc/app.changala.ring.deleteLink",
             post(handlers::brain::delete_link),
         )
-        // ── API key → session bridge ────────────────────────
-        // Must be LAST: axum layers only wrap routes added before them.
-        .layer(axum::middleware::from_fn(
-            crate::api_key_auth::api_key_auth_middleware,
-        ))
+    // NOTE: API key auth is handled natively by atrg 0.2.0's RequireAuth extractor.
+    // The old api_key_auth_middleware bridge layer has been removed.
 }
 
 async fn index() -> Json<serde_json::Value> {
@@ -333,69 +328,4 @@ async fn well_known_oauth(State(state): State<AppState>) -> Json<serde_json::Val
         "scopes_supported": [config.scope],
         "bearer_methods_supported": ["header"]
     }))
-}
-
-/// `GET /auth/complete`
-///
-/// Cross-origin session handoff. After atrg-auth's `/auth/callback` sets the
-/// `atrg_session` HttpOnly cookie and redirects here (same origin → cookie is
-/// present), this handler:
-/// 1. Reads the `atrg_session` cookie
-/// 2. Looks up the session in the DB to get `did` and `handle`
-/// 3. Redirects to the frontend with `?token=...&did=...&handle=...` in the URL
-///
-/// This avoids the cross-origin cookie problem: the cookie is only used on the
-/// Ring's own domain, and the frontend receives the session info via URL params.
-/// Query params for the session handoff endpoint.
-#[derive(serde::Deserialize)]
-struct AuthCompleteParams {
-    /// The frontend URL to redirect to. Passed through the OAuth flow so
-    /// /auth/complete knows where the user's browser came from.
-    /// Falls back to `post_login_redirect` in atrg.toml.
-    frontend: Option<String>,
-}
-
-async fn auth_complete(
-    State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<AuthCompleteParams>,
-    headers: HeaderMap,
-) -> Response {
-    let frontend = params
-        .frontend
-        .filter(|f| !f.trim().is_empty())
-        .unwrap_or_else(|| state.config.auth.post_login_redirect.clone());
-
-    // 1. Extract atrg_session from the cookie header
-    let session_id = headers
-        .get(axum::http::header::COOKIE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|cookies| {
-            cookies.split(';').find_map(|c| {
-                let c = c.trim();
-                c.strip_prefix("atrg_session=")
-            })
-        });
-
-    let Some(session_id) = session_id else {
-        return axum::response::Redirect::temporary(&format!("{}?error=no_session", frontend))
-            .into_response();
-    };
-
-    // 2. Look up session in DB
-    let session = atrg_auth::session::find_session(&state.db, session_id).await;
-
-    match session {
-        Ok(Some(s)) => {
-            let redirect_url = format!(
-                "{}?token={}&did={}&handle={}",
-                frontend,
-                urlencoding::encode(session_id),
-                urlencoding::encode(&s.did),
-                urlencoding::encode(&s.handle),
-            );
-            axum::response::Redirect::temporary(&redirect_url).into_response()
-        }
-        _ => axum::response::Redirect::temporary(&format!("{}?error=invalid_session", frontend))
-            .into_response(),
-    }
 }

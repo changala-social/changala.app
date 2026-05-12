@@ -1,12 +1,12 @@
 //! Course service handlers — CRUD and enrollment.
 
+use atrg_auth::RequireAuth;
+use atrg_core::AppState;
 use atrg_repo::Tid;
 use atrg_xrpc::{XrpcError, XrpcErrorName};
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::Json;
 use chrono::Utc;
-
-use atrg_auth::RequireAuth;
 
 use changala_shared::types::*;
 
@@ -122,10 +122,11 @@ async fn fetch_course_view(
 /// Generates a TID rkey, inserts a new course, and returns the full course
 /// view with `enrolled_count: 0`.
 pub async fn create_course(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingCreateCourseInput>,
 ) -> Result<Json<AppChangalaRingCreateCourseOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_role(&app.db, &session.did, "admin").await?;
 
@@ -190,9 +191,10 @@ pub async fn create_course(
 ///
 /// Fetches a single course by AT URI. Returns `NotFound` if absent.
 pub async fn get_course(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetCourseParams>,
 ) -> Result<Json<AppChangalaRingGetCourseOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let view = fetch_course_view(&app.db, &params.uri)
         .await?
         .ok_or_else(|| XrpcError {
@@ -222,9 +224,10 @@ pub async fn get_course(
 /// pagination. Default limit 50, max 100. Cursor is the `created_at` of the
 /// last item in the previous page.
 pub async fn list_courses(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingListCoursesParams>,
 ) -> Result<Json<AppChangalaRingListCoursesOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let limit = params.limit.unwrap_or(50).clamp(1, 100);
 
     // Build dynamic query
@@ -337,10 +340,11 @@ pub async fn list_courses(
 /// falls back to the authenticated user's DID (placeholder for now).
 /// Returns 400 (InvalidRequest) on duplicate enrollment.
 pub async fn enroll_student(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingEnrollStudentInput>,
 ) -> Result<Json<AppChangalaRingEnrollStudentOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_institution_member(&app.db, &session.did).await?;
 
@@ -398,9 +402,10 @@ pub async fn enroll_student(
 /// Lists enrolled student DIDs for a course, with cursor-based pagination
 /// and a total count.
 pub async fn get_enrollments(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingGetEnrollmentsParams>,
 ) -> Result<Json<AppChangalaRingGetEnrollmentsOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let limit = params.limit.unwrap_or(50).clamp(1, 100);
 
     // Total enrolled count (regardless of pagination)
@@ -470,10 +475,11 @@ pub async fn get_enrollments(
 /// DID's role in the memberships table to `classRep`. Returns the updated
 /// course view.
 pub async fn assign_class_rep(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingAssignClassRepInput>,
 ) -> Result<Json<AppChangalaRingAssignClassRepOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::check_not_banned(&app.db, &session.did).await?;
     auth::require_role(&app.db, &session.did, "admin").await?;
 

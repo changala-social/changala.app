@@ -1,7 +1,8 @@
 //! Moderation service handlers — DID ban management.
 
 use atrg_auth::RequireAuth;
-use axum::extract::Query;
+use atrg_core::AppState;
+use axum::extract::{Query, State};
 use axum::Json;
 
 use atrg_xrpc::{XrpcError, XrpcErrorName};
@@ -12,10 +13,11 @@ use super::auth;
 
 /// POST /xrpc/app.changala.ring.banDid
 pub async fn ban_did(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingBanDidInput>,
 ) -> Result<Json<AppChangalaRingBanDidOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::require_role(&app.db, &session.did, "admin").await?;
 
     let banned_at = chrono::Utc::now().to_rfc3339();
@@ -50,10 +52,11 @@ pub async fn ban_did(
 
 /// POST /xrpc/app.changala.ring.liftBan
 pub async fn lift_ban(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Json(input): Json<AppChangalaRingLiftBanInput>,
 ) -> Result<Json<AppChangalaRingLiftBanOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::require_role(&app.db, &session.did, "admin").await?;
     let result = sqlx::query("DELETE FROM bans WHERE target_did = $1")
         .bind(&input.target_did)
@@ -79,10 +82,11 @@ pub async fn lift_ban(
 
 /// GET /xrpc/app.changala.ring.listBans
 pub async fn list_bans(
+    State(state): State<AppState>,
     RequireAuth(session): RequireAuth,
     Query(params): Query<AppChangalaRingListBansParams>,
 ) -> Result<Json<AppChangalaRingListBansOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     auth::require_role(&app.db, &session.did, "admin").await?;
     let limit = params.limit.unwrap_or(50).min(100);
 
@@ -144,9 +148,10 @@ pub async fn list_bans(
 
 /// GET /xrpc/app.changala.ring.isBanned
 pub async fn is_banned(
+    State(state): State<AppState>,
     Query(params): Query<AppChangalaRingIsBannedParams>,
 ) -> Result<Json<AppChangalaRingIsBannedOutput>, XrpcError> {
-    let app = crate::state::get();
+    let app = state.extension::<crate::ChangalaState>();
     let row = sqlx::query_as::<_, (bool, Option<String>)>(
         "SELECT 1::BIGINT, expires_at FROM bans WHERE target_did = $1 AND (permanent = TRUE OR expires_at > NOW()::TEXT)"
     )

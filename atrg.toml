@@ -5,6 +5,7 @@ port = 3000
 secret_key = "5d35c20908906d926e1804c21a664dc744e8a25f49fd3121f10dc3baad462e2c"
 cors_origins = ["http://localhost:5173"]
 environment = "development"
+admin_dids = []
 
 [auth]
 # Defaults for local dev. Override via env vars in production:
@@ -31,6 +32,7 @@ collections = [
     "app.changala.brain.node",
     "app.changala.brain.link",
 ]
+cursor = "auto"
 
 [changala]
 database_url = "postgres://changala@127.0.0.1:5432/changala"
