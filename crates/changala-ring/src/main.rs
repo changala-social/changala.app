@@ -5,7 +5,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 mod api_key_auth;
-mod email;
 mod handlers;
 mod routes;
 
@@ -22,7 +21,7 @@ pub struct ChangalaState {
     /// Allowed institution email domains for membership verification.
     pub allowed_email_domains: Vec<String>,
     /// Optional SMTP config — None = dev mode (log OTPs to stdout).
-    pub smtp: Option<email::SmtpConfig>,
+    pub email_config: Option<atrg_email::EmailConfig>,
 }
 
 /// Changala Ring config loaded from atrg.toml [changala] section.
@@ -48,7 +47,7 @@ struct ChangalaConfig {
     database_url: String,
     s3: atrg_blob::s3::S3Config,
     #[serde(default)]
-    smtp: Option<email::SmtpConfig>,
+    smtp: Option<atrg_email::EmailConfig>,
     #[serde(default)]
     allowed_email_domains: Vec<String>,
     #[serde(default)]
@@ -112,13 +111,14 @@ impl ChangalaConfig {
         }
         // SMTP overrides
         if let Ok(v) = std::env::var("CHANGALA_SMTP_HOST") {
-            let smtp = self.smtp.get_or_insert_with(|| email::SmtpConfig {
+            let smtp = self.smtp.get_or_insert_with(|| atrg_email::EmailConfig {
                 host: String::new(),
                 port: 587,
                 username: String::new(),
                 password: String::new(),
                 from: String::new(),
                 encryption: "starttls".to_string(),
+                otp_expiry_secs: 600,
             });
             smtp.host = v;
             overrides.push("CHANGALA_SMTP_HOST");
@@ -203,7 +203,7 @@ async fn main() -> anyhow::Result<()> {
         db: pg_pool.clone(),
         blobs: Arc::new(blobs),
         allowed_email_domains: config.allowed_email_domains.clone(),
-        smtp: config.smtp.clone(),
+        email_config: config.smtp.clone(),
     };
 
     // Auto-provision admin DIDs from config/env var
@@ -227,42 +227,39 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Auto-provision bootstrap API key from env var
-    if let Ok(bootstrap_key) = std::env::var("CHANGALA_BOOTSTRAP_API_KEY") {
-        if !bootstrap_key.is_empty() {
-            // sha2 and hex come from workspace deps (also used by api_key_auth / apikeys handlers)
-            let hash = {
-                use sha2::{Digest, Sha256};
-                format!(
-                    "sha256-{}",
-                    hex::encode(Sha256::digest(bootstrap_key.as_bytes()))
-                )
-            };
-            let prefix: String = bootstrap_key.chars().take(12).collect();
-            let now = chrono::Utc::now().to_rfc3339();
+    // Auto-provision bootstrap API key.
+    // Set CHANGALA_BOOTSTRAP_API_KEY to any non-empty value (e.g. "generate")
+    // to auto-create an admin API key on startup. The generated key is logged
+    // once and cannot be recovered — save it immediately.
+    // NOTE: atrg-auth generates the key material; the env var no longer
+    //       supplies the key value directly (format changed to hex).
+    if let Ok(val) = std::env::var("CHANGALA_BOOTSTRAP_API_KEY") {
+        if !val.is_empty() {
+            let db_pool = atrg_db::DbPool::Postgres(pg_pool.clone());
             let admin_did = config
                 .admin_dids
                 .first()
                 .map(|s| s.as_str())
                 .unwrap_or("did:web:system");
-            let result = sqlx::query(
-                "INSERT INTO api_keys (key_hash, key_prefix, did, name, scopes, created_at) \
-                 VALUES ($1, $2, $3, 'Bootstrap Key', '[\"admin:*\"]', $4) \
-                 ON CONFLICT (key_hash) DO NOTHING",
+            match atrg_auth::api_keys::create_api_key(
+                &db_pool,
+                admin_did,
+                "Bootstrap Key",
+                &["admin:*".to_string()],
+                "chg_",
             )
-            .bind(&hash)
-            .bind(&prefix)
-            .bind(admin_did)
-            .bind(&now)
-            .execute(&pg_pool)
-            .await;
-            match result {
-                Ok(r) if r.rows_affected() > 0 => {
-                    tracing::info!(prefix = %prefix, "bootstrap API key provisioned");
+            .await
+            {
+                Ok((full_key, api_key)) => {
+                    tracing::info!(
+                        prefix = %api_key.key_prefix,
+                        "bootstrap API key created — key: {}",
+                        full_key
+                    );
                 }
-                Ok(_) => tracing::debug!("bootstrap API key already exists"),
                 Err(e) => {
-                    tracing::warn!(error = %e, "failed to provision bootstrap API key")
+                    // Might fail if key already exists from a previous run
+                    tracing::debug!(error = %e, "bootstrap API key creation skipped (may already exist)");
                 }
             }
         }

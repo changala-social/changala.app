@@ -36,7 +36,8 @@ pub async fn mcp_gate_middleware(db: sqlx::PgPool, req: Request<Body>, next: Nex
             .into_response();
     };
 
-    let key_result = crate::handlers::apikeys::find_api_key(&db, key).await;
+    let db_pool = atrg_db::DbPool::Postgres(db.clone());
+    let key_result = atrg_auth::api_keys::find_by_key(&db_pool, key).await;
 
     match key_result {
         Ok(Some(_)) => next.run(req).await,

@@ -23,42 +23,25 @@ pub async fn verify_email(
     match input.otp {
         None => {
             // Validate email domain against allowlist
-            let domain = input.email.split('@').nth(1).unwrap_or("").to_lowercase();
-            let allowed = &app.allowed_email_domains;
-            if !allowed.is_empty() && !allowed.iter().any(|d| d == &domain) {
+            if let Err(msg) = atrg_email::validate_domain(&input.email, &app.allowed_email_domains)
+            {
                 return Err(XrpcError {
                     name: XrpcErrorName::InvalidRequest,
-                    message: format!(
-                        "Email domain '{}' is not allowed. Use your institution email (allowed: {}).",
-                        domain,
-                        allowed.join(", ")
-                    ),
+                    message: msg,
                 });
             }
 
-            // Step 1: Generate and store OTP
-            let code = generate_otp();
-            let expires_at = chrono::Utc::now().timestamp() + 600; // 10 minutes
-
-            sqlx::query(
-                "INSERT INTO otp_codes (did, email, code, expires_at) VALUES ($1, $2, $3, $4)",
+            // Generate OTP, store in DB, send via email (or log in dev mode)
+            let db_pool = atrg_db::DbPool::Postgres(app.db.clone());
+            if let Err(e) = atrg_email::send_otp(
+                &db_pool,
+                app.email_config.as_ref(),
+                &input.did,
+                &input.email,
             )
-            .bind(&input.did)
-            .bind(&input.email)
-            .bind(&code)
-            .bind(expires_at)
-            .execute(&app.db)
             .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("Failed to store OTP: {e}"),
-            })?;
-
-            // Send OTP via email (or log in dev mode if SMTP not configured)
-            if let Err(e) =
-                crate::email::send_otp_email(app.smtp.as_ref(), &input.email, &code).await
             {
-                tracing::error!(email = %input.email, error = %e, "Failed to send OTP email");
+                tracing::error!(email = %input.email, error = %e, "Failed to send OTP");
                 return Err(XrpcError {
                     name: XrpcErrorName::InternalServerError,
                     message: "Failed to send verification email. Please try again.".to_string(),
@@ -71,54 +54,30 @@ pub async fn verify_email(
             }))
         }
         Some(otp) => {
-            // Validate email domain against allowlist (prevents submitting OTP for disallowed domain)
-            let domain = input.email.split('@').nth(1).unwrap_or("").to_lowercase();
-            let allowed = &app.allowed_email_domains;
-            if !allowed.is_empty() && !allowed.iter().any(|d| d == &domain) {
+            // Validate domain
+            if let Err(msg) = atrg_email::validate_domain(&input.email, &app.allowed_email_domains)
+            {
                 return Err(XrpcError {
                     name: XrpcErrorName::InvalidRequest,
-                    message: format!(
-                        "Email domain '{}' is not allowed. Use your institution email (allowed: {}).",
-                        domain,
-                        allowed.join(", ")
-                    ),
+                    message: msg,
                 });
             }
 
-            // Step 2: Verify OTP
-            let now = chrono::Utc::now().timestamp();
+            // Verify OTP
+            let db_pool = atrg_db::DbPool::Postgres(app.db.clone());
+            let valid = atrg_email::verify_otp(&db_pool, &input.did, &input.email, &otp)
+                .await
+                .map_err(|e| XrpcError {
+                    name: XrpcErrorName::InternalServerError,
+                    message: format!("OTP verification failed: {e}"),
+                })?;
 
-            let valid = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM otp_codes WHERE did = $1 AND email = $2 AND code = $3 AND expires_at > $4 AND used = FALSE"
-            )
-            .bind(&input.did)
-            .bind(&input.email)
-            .bind(&otp)
-            .bind(now)
-            .fetch_one(&app.db)
-            .await
-            .map_err(|e| XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("OTP lookup failed: {e}"),
-            })?;
-
-            if valid == 0 {
+            if !valid {
                 return Err(XrpcError {
                     name: XrpcErrorName::InvalidRequest,
                     message: "Invalid or expired OTP".to_string(),
                 });
             }
-
-            // Mark OTP as used
-            sqlx::query(
-                "UPDATE otp_codes SET used = TRUE WHERE did = $1 AND email = $2 AND code = $3",
-            )
-            .bind(&input.did)
-            .bind(&input.email)
-            .bind(&otp)
-            .execute(&app.db)
-            .await
-            .ok();
 
             // Extract institution domain from email
             let domain = input
@@ -221,14 +180,4 @@ pub async fn get_role(
             message: "No verified membership found for this DID".to_string(),
         }),
     }
-}
-
-/// Generate a 6-digit OTP code
-fn generate_otp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let seed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
-    format!("{:06}", seed % 1_000_000)
 }

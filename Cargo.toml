@@ -8,22 +8,21 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.9"
+version = "0.4.0"
 edition = "2021"
 
 [workspace.dependencies]
 # AT Protocol framework
-atrg-core = { version = "0.2.0", default-features = false, features = ["postgres"] }
-atrg-auth = { version = "0.2.0", default-features = false, features = ["postgres"] }
-atrg-db = { version = "0.2.0", default-features = false, features = ["postgres"] }
-atrg-xrpc = "0.2.0"
-atrg-stream = { version = "0.2.0", default-features = false, features = ["postgres"] }
-atrg-repo = "0.2.0"
-atrg-identity = "0.2.0"
-atrg-blob = { version = "0.2.0", features = ["s3"] }
-# atrg-email = { version = "0.2.0", ... }  — disabled: upstream bug (non-exhaustive DbPool match in otp.rs)
-# keeping custom email.rs until atrg-email 0.2.1 ships the fix
-atrg-testing = "0.2.0"
+atrg-core = { version = "0.2.2", default-features = false, features = ["postgres"] }
+atrg-auth = { version = "0.2.2", default-features = false, features = ["postgres"] }
+atrg-db = { version = "0.2.2", default-features = false, features = ["postgres"] }
+atrg-xrpc = "0.2.2"
+atrg-stream = { version = "0.2.2", default-features = false, features = ["postgres"] }
+atrg-repo = "0.2.2"
+atrg-identity = "0.2.2"
+atrg-blob = { version = "0.2.2", features = ["s3"] }
+atrg-email = { version = "0.2.2", default-features = false, features = ["postgres"] }
+atrg-testing = "0.2.2"
 
 # HTTP
 axum = { version = "0.8", features = ["macros"] }
