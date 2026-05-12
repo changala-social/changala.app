@@ -87,6 +87,14 @@
           }
         );
 
+        # Migration directories — needed at runtime by atrg_db::run_isolated_migrations.
+        # Packaged as a derivation so they land in the Docker image.
+        changala-migrations = pkgs.runCommand "changala-migrations" { } ''
+          mkdir -p $out/app/ring_migrations $out/app/aggregator_migrations
+          cp -r ${./.}/crates/changala-ring/ring_migrations/* $out/app/ring_migrations/ 2>/dev/null || true
+          cp -r ${./.}/crates/changala-aggregator/aggregator_migrations/* $out/app/aggregator_migrations/ 2>/dev/null || true
+        '';
+
         # Extract individual binaries from the workspace build
         changala-ring = changala-workspace;
         changala-aggregator = changala-workspace;
@@ -391,6 +399,7 @@
             contents = [
               changala-ring
               changala-aggregator
+              changala-migrations
               pkgs.cacert
               pkgs.tini
               pkgs.dockerTools.fakeNss # /etc/nsswitch.conf + passwd/group for glibc DNS

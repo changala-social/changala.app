@@ -25,6 +25,10 @@ RUN chmod +x /usr/local/bin/changala
 USER changala
 WORKDIR /app
 
+# Migration directories — needed at runtime by atrg_db::run_isolated_migrations
+COPY crates/changala-ring/ring_migrations/ /app/ring_migrations/
+COPY crates/changala-aggregator/aggregator_migrations/ /app/aggregator_migrations/
+
 EXPOSE 3000
 
 ENTRYPOINT ["tini", "--"]
