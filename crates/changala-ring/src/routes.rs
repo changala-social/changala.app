@@ -229,6 +229,19 @@ fn xrpc_routes() -> Router<AppState> {
             "/xrpc/app.changala.ring.getArchive",
             get(handlers::archive::get_archive),
         )
+        // ── Timetable & Calendar ────────────────────────────
+        .route(
+            "/xrpc/app.changala.ring.loadCalendar",
+            post(handlers::timetable::load_calendar),
+        )
+        .route(
+            "/xrpc/app.changala.ring.loadSlots",
+            post(handlers::timetable::load_slots),
+        )
+        .route(
+            "/xrpc/app.changala.ring.provisionSessions",
+            post(handlers::timetable::provision_sessions),
+        )
         // ── Brain ───────────────────────────────────────────
         .route(
             "/xrpc/app.changala.ring.createNode",

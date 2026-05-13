@@ -8,3 +8,4 @@ pub mod identity;
 pub mod moderation;
 pub mod note;
 pub mod session;
+pub mod timetable;

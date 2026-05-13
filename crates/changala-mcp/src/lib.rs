@@ -132,6 +132,57 @@ struct BulkCourseEntry {
     visibility: Option<String>,
 }
 
+#[derive(Deserialize, JsonSchema)]
+struct LoadCalendarParams {
+    /// Semester identifier (e.g. "2025-winter")
+    semester: String,
+    /// Calendar phases (instructional, exam, etc.) — array of objects with name, label, type, start, end
+    phases: Vec<CalendarPhaseParam>,
+    /// Holidays — array of objects with date and name
+    holidays: Vec<HolidayParam>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CalendarPhaseParam {
+    /// Phase identifier
+    name: String,
+    /// Human-readable label
+    label: String,
+    /// Phase type: "instructional", "exam", "festival", "administrative"
+    #[serde(rename = "type")]
+    phase_type: String,
+    /// Start date (YYYY-MM-DD)
+    start: String,
+    /// End date (YYYY-MM-DD)
+    end: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct HolidayParam {
+    /// Holiday date (YYYY-MM-DD)
+    date: String,
+    /// Holiday name
+    name: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct LoadSlotsParams {
+    /// Semester identifier
+    semester: String,
+    /// Slot definitions as a JSON object — keys are slot names, values have schedule arrays
+    slots: serde_json::Value,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ProvisionSessionsParams {
+    /// AT URI of the course
+    course_uri: String,
+    /// Slot name (e.g. "B1")
+    slot: String,
+    /// Semester identifier
+    semester: String,
+}
+
 // ---------------------------------------------------------------------------
 // Server struct and XRPC helpers
 // ---------------------------------------------------------------------------
@@ -465,6 +516,79 @@ impl ChangalaServer {
             "failed": failed,
         });
         Ok(ok_result(&summary))
+    }
+
+    #[tool(
+        description = "Load academic calendar (phases + holidays) for a semester into the Ring. Admin only. Provide phases with name/label/type/start/end and holidays with date/name."
+    )]
+    async fn load_calendar(
+        &self,
+        Parameters(p): Parameters<LoadCalendarParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let mut phases = Vec::new();
+        for ph in &p.phases {
+            phases.push(serde_json::json!({
+                "name": ph.name,
+                "label": ph.label,
+                "type": ph.phase_type,
+                "start": ph.start,
+                "end": ph.end,
+            }));
+        }
+        let mut holidays = Vec::new();
+        for h in &p.holidays {
+            holidays.push(serde_json::json!({
+                "date": h.date,
+                "name": h.name,
+            }));
+        }
+        let body = serde_json::json!({
+            "semester": p.semester,
+            "phases": phases,
+            "holidays": holidays,
+        });
+        match self.xrpc_post("app.changala.ring.loadCalendar", body).await {
+            Ok(result) => Ok(ok_result(&result)),
+            Err(e) => Ok(err_result(e)),
+        }
+    }
+
+    #[tool(
+        description = "Load timetable slot definitions for a semester into the Ring. Admin only. Provide slots as a JSON object where keys are slot names and values have 'schedule' arrays with day/start/end."
+    )]
+    async fn load_slots(
+        &self,
+        Parameters(p): Parameters<LoadSlotsParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let body = serde_json::json!({
+            "semester": p.semester,
+            "slots": p.slots,
+        });
+        match self.xrpc_post("app.changala.ring.loadSlots", body).await {
+            Ok(result) => Ok(ok_result(&result)),
+            Err(e) => Ok(err_result(e)),
+        }
+    }
+
+    #[tool(
+        description = "Provision sessions for a course based on its assigned slot. Uses the loaded calendar and slot definitions to compute all instructional dates, skipping holidays and exam periods. Admin only."
+    )]
+    async fn provision_sessions(
+        &self,
+        Parameters(p): Parameters<ProvisionSessionsParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let body = serde_json::json!({
+            "courseUri": p.course_uri,
+            "slot": p.slot,
+            "semester": p.semester,
+        });
+        match self
+            .xrpc_post("app.changala.ring.provisionSessions", body)
+            .await
+        {
+            Ok(result) => Ok(ok_result(&result)),
+            Err(e) => Ok(err_result(e)),
+        }
     }
 }
 
