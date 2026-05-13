@@ -25,9 +25,9 @@ pub fn api() -> Router<AppState> {
             "/.well-known/oauth-protected-resource",
             get(well_known_oauth),
         )
-        // NOTE: Cross-origin session handoff is now handled natively by
-        // atrg 0.2.0's `[auth] post_login_redirect` config in atrg.toml.
-        // The old /auth/complete endpoint has been removed.
+        // Cross-origin session handoff — forwards token/did/handle params
+        // from the OAuth callback to the frontend URL.
+        .route("/auth/complete", get(auth_complete))
         .merge(xrpc_routes())
 }
 
@@ -303,6 +303,50 @@ async fn client_metadata(State(state): State<AppState>) -> Json<serde_json::Valu
         "token_endpoint_auth_method": "none",
         "dpop_bound_access_tokens": true
     }))
+}
+
+/// Query params from the OAuth callback redirect.
+#[derive(serde::Deserialize)]
+struct AuthCompleteParams {
+    /// Frontend URL to redirect to.
+    frontend: Option<String>,
+    /// Session token.
+    token: Option<String>,
+    /// User DID.
+    did: Option<String>,
+    /// User handle.
+    handle: Option<String>,
+}
+
+/// GET /auth/complete — forwards OAuth session params to the frontend.
+async fn auth_complete(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<AuthCompleteParams>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    let frontend = params
+        .frontend
+        .filter(|f| !f.trim().is_empty())
+        .unwrap_or_else(|| state.config.auth.post_login_redirect.clone());
+
+    let mut redirect_url = frontend.clone();
+
+    // Forward token/did/handle as query params to the frontend
+    let mut sep = if redirect_url.contains('?') { "&" } else { "?" };
+    if let Some(ref token) = params.token {
+        redirect_url.push_str(&format!("{}token={}", sep, urlencoding::encode(token)));
+        sep = "&";
+    }
+    if let Some(ref did) = params.did {
+        redirect_url.push_str(&format!("{}did={}", sep, urlencoding::encode(did)));
+        sep = "&";
+    }
+    if let Some(ref handle) = params.handle {
+        redirect_url.push_str(&format!("{}handle={}", sep, urlencoding::encode(handle)));
+    }
+
+    axum::response::Redirect::temporary(&redirect_url).into_response()
 }
 
 /// OAuth protected resource metadata.

@@ -33,4 +33,6 @@ tracing-subscriber = { workspace = true }
 atrg-blob = { workspace = true }
 atrg-email = { workspace = true }
 urlencoding = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
 changala-mcp = { workspace = true }

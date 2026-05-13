@@ -228,11 +228,8 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Auto-provision bootstrap API key.
-    // Set CHANGALA_BOOTSTRAP_API_KEY to any non-empty value (e.g. "generate")
-    // to auto-create an admin API key on startup. The generated key is logged
-    // once and cannot be recovered — save it immediately.
-    // NOTE: atrg-auth generates the key material; the env var no longer
-    //       supplies the key value directly (format changed to hex).
+    // If CHANGALA_BOOTSTRAP_API_KEY starts with "chg_" and is 68 chars (prefix + 64 hex),
+    // provision that exact key. Otherwise, if set to any non-empty value, generate a new one.
     if let Ok(val) = std::env::var("CHANGALA_BOOTSTRAP_API_KEY") {
         if !val.is_empty() {
             let db_pool = atrg_db::DbPool::Postgres(pg_pool.clone());
@@ -241,25 +238,60 @@ async fn main() -> anyhow::Result<()> {
                 .first()
                 .map(|s| s.as_str())
                 .unwrap_or("did:web:system");
-            match atrg_auth::api_keys::create_api_key(
-                &db_pool,
-                admin_did,
-                "Bootstrap Key",
-                &["admin:*".to_string()],
-                "chg_",
-            )
-            .await
-            {
-                Ok((full_key, api_key)) => {
-                    tracing::info!(
-                        prefix = %api_key.key_prefix,
-                        "bootstrap API key created — key: {}",
-                        full_key
-                    );
+
+            if val.starts_with("chg_") && val.len() == 68 {
+                // Provision the EXACT key from the env var
+                use sha2::{Digest, Sha256};
+                let key_hash = hex::encode(Sha256::digest(val.as_bytes()));
+                let key_prefix = format!("chg_{}", &val[4..12]);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+
+                let result = sqlx::query(
+                    "INSERT INTO api_keys (key_hash, key_prefix, did, name, scopes, created_at) \
+                     VALUES ($1, $2, $3, 'Bootstrap Key', 'admin:*', $4) \
+                     ON CONFLICT (key_hash) DO NOTHING",
+                )
+                .bind(&key_hash)
+                .bind(&key_prefix)
+                .bind(admin_did)
+                .bind(now)
+                .execute(&pg_pool)
+                .await;
+
+                match result {
+                    Ok(r) if r.rows_affected() > 0 => {
+                        tracing::info!(prefix = %key_prefix, "bootstrap API key provisioned (from env var)");
+                    }
+                    Ok(_) => tracing::debug!("bootstrap API key already exists"),
+                    Err(e) => tracing::warn!(error = %e, "failed to provision bootstrap API key"),
                 }
-                Err(e) => {
-                    // Might fail if key already exists from a previous run
-                    tracing::debug!(error = %e, "bootstrap API key creation skipped (may already exist)");
+            } else {
+                // Generate a random key
+                match atrg_auth::api_keys::create_api_key(
+                    &db_pool,
+                    admin_did,
+                    "Bootstrap Key",
+                    &["admin:*".to_string()],
+                    "chg_",
+                )
+                .await
+                {
+                    Ok((full_key, api_key)) => {
+                        tracing::info!(
+                            prefix = %api_key.key_prefix,
+                            "bootstrap API key created — key: {}",
+                            full_key
+                        );
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            error = %e,
+                            "bootstrap API key creation skipped (may already exist)"
+                        );
+                    }
                 }
             }
         }
