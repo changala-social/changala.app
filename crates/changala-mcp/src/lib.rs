@@ -103,6 +103,35 @@ struct GetMembershipsParams {
     did: String,
 }
 
+#[derive(Deserialize, JsonSchema)]
+struct FetchUrlParams {
+    /// URL to fetch (must return JSON)
+    url: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct BulkCreateCoursesParams {
+    /// Array of courses to create. Each object needs: code, title, department, semester.
+    /// Optional: description, visibility (defaults to "institution").
+    courses: Vec<BulkCourseEntry>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct BulkCourseEntry {
+    /// Course code (e.g. EC2002E)
+    code: String,
+    /// Full title
+    title: String,
+    /// Department code
+    department: String,
+    /// Semester identifier (e.g. 2025-winter)
+    semester: String,
+    /// Optional description
+    description: Option<String>,
+    /// Visibility (defaults to "institution")
+    visibility: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Server struct and XRPC helpers
 // ---------------------------------------------------------------------------
@@ -379,6 +408,63 @@ impl ChangalaServer {
             Ok(result) => Ok(ok_result(&result)),
             Err(e) => Ok(err_result(e)),
         }
+    }
+
+    #[tool(
+        description = "Fetch a JSON URL. Use this to read curriculum data from the institution's data repo (e.g. courses.json, calendar, slots)."
+    )]
+    async fn fetch_url(
+        &self,
+        Parameters(p): Parameters<FetchUrlParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        match self
+            .client
+            .get(&p.url)
+            .header("User-Agent", "changala-mcp/0.1")
+            .send()
+            .await
+        {
+            Ok(resp) => match resp.json::<serde_json::Value>().await {
+                Ok(json) => Ok(ok_result(&json)),
+                Err(e) => Ok(err_result(anyhow::anyhow!("Failed to parse JSON: {e}"))),
+            },
+            Err(e) => Ok(err_result(anyhow::anyhow!("Fetch failed: {e}"))),
+        }
+    }
+
+    #[tool(
+        description = "Create multiple courses in one call. Provide an array of courses each with code, title, department, semester. Returns a summary of created/failed courses."
+    )]
+    async fn bulk_create_courses(
+        &self,
+        Parameters(p): Parameters<BulkCreateCoursesParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let total = p.courses.len();
+        let mut created = 0u32;
+        let mut failed = Vec::new();
+
+        for c in &p.courses {
+            let body = serde_json::json!({
+                "title": c.title,
+                "code": c.code,
+                "department": c.department,
+                "semester": c.semester,
+                "visibility": c.visibility.as_deref().unwrap_or("institution"),
+                "description": c.description.as_deref().unwrap_or(""),
+            });
+            match self.xrpc_post("app.changala.ring.createCourse", body).await {
+                Ok(_) => created += 1,
+                Err(e) => failed.push(format!("{}: {}", c.code, e)),
+            }
+        }
+
+        let summary = serde_json::json!({
+            "total": total,
+            "created": created,
+            "failed_count": failed.len(),
+            "failed": failed,
+        });
+        Ok(ok_result(&summary))
     }
 }
 
