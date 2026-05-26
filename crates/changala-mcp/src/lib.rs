@@ -53,6 +53,8 @@ struct EnrollStudentParams {
     course_uri: String,
     /// Student DID to enroll
     target_did: String,
+    /// Slot preference (e.g. "B1" for morning, "B2" for afternoon). Optional.
+    slot: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -325,7 +327,7 @@ impl ChangalaServer {
         &self,
         Parameters(p): Parameters<EnrollStudentParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let body = serde_json::json!({"courseUri": p.course_uri, "targetDid": p.target_did});
+        let body = serde_json::json!({"courseUri": p.course_uri, "targetDid": p.target_did, "slot": p.slot});
         match self
             .xrpc_post("app.changala.ring.enrollStudent", body)
             .await

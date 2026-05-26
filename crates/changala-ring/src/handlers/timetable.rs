@@ -434,8 +434,8 @@ pub async fn provision_sessions(
         let result = sqlx::query(
             "INSERT INTO sessions \
                  (uri, rkey, course_uri, scheduled_at, duration_mins, \
-                  status, created_by, topic, created_at) \
-             VALUES ($1, $2, $3, $4, $5, 'scheduled', $6, $7, $8) \
+                  status, created_by, topic, slot, created_at) \
+             VALUES ($1, $2, $3, $4, $5, 'scheduled', $6, $7, $8, $9) \
              ON CONFLICT (uri) DO NOTHING",
         )
         .bind(&uri)
@@ -445,6 +445,7 @@ pub async fn provision_sessions(
         .bind(duration_mins as i32)
         .bind(&session.did)
         .bind(&topic)
+        .bind(&input.slot)
         .bind(&now)
         .execute(&app.db)
         .await

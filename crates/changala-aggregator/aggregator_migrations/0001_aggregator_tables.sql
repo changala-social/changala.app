@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS enrollments (
     id BIGSERIAL PRIMARY KEY,
     course_uri TEXT NOT NULL,
     did TEXT NOT NULL,
+    slot TEXT,
     enrolled_at TEXT NOT NULL,
     UNIQUE(course_uri, did)
 );
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     status TEXT NOT NULL DEFAULT 'scheduled',
     created_by TEXT NOT NULL,
     topic TEXT,
+    slot TEXT,
     opened_at TEXT,
     closed_at TEXT,
     keyword_window_expires_at TEXT,

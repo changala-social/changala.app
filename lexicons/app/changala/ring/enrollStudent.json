@@ -21,6 +21,10 @@
               "type": "string",
               "format": "did",
               "description": "DID of the student to enroll. For admin use; omit to enroll self."
+            },
+            "slot": {
+              "type": "string",
+              "description": "Slot preference (e.g. 'B1' for morning, 'B2' for afternoon). If omitted, student sees all sessions for the course."
             }
           }
         }

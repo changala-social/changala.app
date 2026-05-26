@@ -30,6 +30,10 @@
             "topic": {
               "type": "string",
               "description": "Optional topic or title for this session."
+            },
+            "slot": {
+              "type": "string",
+              "description": "Slot this session belongs to (e.g. 'B1', 'G'). Used for section-based filtering."
             }
           }
         }
@@ -38,7 +42,16 @@
         "encoding": "application/json",
         "schema": {
           "type": "object",
-          "required": ["uri", "courseUri", "scheduledAt", "durationMins", "status", "createdBy", "keywordWindowOpen", "createdAt"],
+          "required": [
+            "uri",
+            "courseUri",
+            "scheduledAt",
+            "durationMins",
+            "status",
+            "createdBy",
+            "keywordWindowOpen",
+            "createdAt"
+          ],
           "properties": {
             "uri": {
               "type": "string",
@@ -66,6 +79,10 @@
             },
             "topic": {
               "type": "string"
+            },
+            "slot": {
+              "type": "string",
+              "description": "Slot this session belongs to."
             },
             "openedAt": {
               "type": "string",

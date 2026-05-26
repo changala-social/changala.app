@@ -1,0 +1,63 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.provisionSessions",
+  "description": "Provision sessions for a course based on its assigned slot.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Uses the loaded calendar and slot definitions to compute all instructional dates, skipping holidays and exam periods. Admin only.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "slot", "semester"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the course to provision sessions for."
+            },
+            "slot": {
+              "type": "string",
+              "description": "Slot name (e.g. 'B1', 'G', 'SA1'). Must match a loaded slot definition."
+            },
+            "semester": {
+              "type": "string",
+              "description": "Semester identifier (e.g. '2025-winter')."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["courseUri", "slot", "sessionsCreated"],
+          "properties": {
+            "courseUri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "slot": {
+              "type": "string"
+            },
+            "sessionsCreated": {
+              "type": "integer",
+              "description": "Number of sessions created."
+            },
+            "firstSession": {
+              "type": "string",
+              "format": "datetime",
+              "description": "Scheduled time of the first session created."
+            },
+            "lastSession": {
+              "type": "string",
+              "format": "datetime",
+              "description": "Scheduled time of the last session created."
+            }
+          }
+        }
+      }
+    }
+  }
+}

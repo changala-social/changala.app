@@ -710,6 +710,10 @@ pub struct AppChangalaRingEnrollStudentInput {
     #[serde(rename = "targetDid")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_did: Option<String>,
+    /// Slot preference (e.g. "B1" for morning, "B2" for afternoon). Optional.
+    /// If omitted, student sees all sessions for the course.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppChangalaRingEnrollStudentOutput {

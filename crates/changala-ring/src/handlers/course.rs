@@ -369,26 +369,29 @@ pub async fn enroll_student(
         });
     }
 
-    sqlx::query("INSERT INTO enrollments (course_uri, did, enrolled_at) VALUES ($1, $2, $3)")
-        .bind(&input.course_uri)
-        .bind(&did)
-        .bind(&now)
-        .execute(&app.db)
-        .await
-        .map_err(|e| {
-            if let sqlx::Error::Database(ref db_err) = e {
-                if db_err.message().contains("UNIQUE") {
-                    return XrpcError {
-                        name: XrpcErrorName::InvalidRequest,
-                        message: format!("{did} is already enrolled in {}", input.course_uri),
-                    };
-                }
+    sqlx::query(
+        "INSERT INTO enrollments (course_uri, did, slot, enrolled_at) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(&input.course_uri)
+    .bind(&did)
+    .bind(&input.slot)
+    .bind(&now)
+    .execute(&app.db)
+    .await
+    .map_err(|e| {
+        if let sqlx::Error::Database(ref db_err) = e {
+            if db_err.message().contains("UNIQUE") {
+                return XrpcError {
+                    name: XrpcErrorName::InvalidRequest,
+                    message: format!("{did} is already enrolled in {}", input.course_uri),
+                };
             }
-            XrpcError {
-                name: XrpcErrorName::InternalServerError,
-                message: format!("database error: {e}"),
-            }
-        })?;
+        }
+        XrpcError {
+            name: XrpcErrorName::InternalServerError,
+            message: format!("database error: {e}"),
+        }
+    })?;
 
     Ok(Json(AppChangalaRingEnrollStudentOutput {
         course_uri: input.course_uri,

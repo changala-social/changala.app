@@ -1,0 +1,48 @@
+{
+  "lexicon": 1,
+  "id": "app.changala.ring.loadSlots",
+  "description": "Load timetable slot definitions for a semester.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Admin only. Replaces any existing slots for the given semester with the provided definitions.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["semester", "slots"],
+          "properties": {
+            "semester": {
+              "type": "string",
+              "description": "Semester identifier (e.g. '2025-winter')."
+            },
+            "slots": {
+              "type": "object",
+              "description": "Slot definitions. Keys are slot names, values are objects with a 'schedule' array of {day, start, end} entries."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["semester", "slotsLoaded", "occurrencesLoaded"],
+          "properties": {
+            "semester": {
+              "type": "string"
+            },
+            "slotsLoaded": {
+              "type": "integer",
+              "description": "Number of slot definitions loaded."
+            },
+            "occurrencesLoaded": {
+              "type": "integer",
+              "description": "Total number of schedule occurrences loaded across all slots."
+            }
+          }
+        }
+      }
+    }
+  }
+}
