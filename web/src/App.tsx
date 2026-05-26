@@ -20,6 +20,7 @@ const LoginPage = React.lazy(() => import("./pages/LoginPage"));
 
 // -- Protected pages --
 const Dashboard = React.lazy(() => import("./pages/Dashboard"));
+const MySchedule = React.lazy(() => import("./pages/MySchedule"));
 const LiveSession = React.lazy(() => import("./pages/LiveSession"));
 const NoteEditor = React.lazy(() => import("./pages/NoteEditor"));
 const BrainNodeEditor = React.lazy(() => import("./pages/BrainNodeEditor"));
@@ -136,6 +137,16 @@ function App() {
             <ProtectedRoute>
               <Suspense fallback={fallback}>
                 <Dashboard />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/schedule"
+          element={
+            <ProtectedRoute>
+              <Suspense fallback={fallback}>
+                <MySchedule />
               </Suspense>
             </ProtectedRoute>
           }

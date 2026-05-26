@@ -79,6 +79,7 @@ export interface Session {
   status: SessionStatus;
   createdBy: string;
   topic?: string;
+  slot?: string;
   openedAt?: string;
   closedAt?: string;
   keywordWindowExpiresAt?: string;
@@ -453,4 +454,62 @@ export interface SealArchiveResponse {
   sealedAt: string;
   sessionCount: number;
   noteCount: number;
+}
+
+export interface Enrollment {
+  courseUri: string;
+  did: string;
+  slot?: string;
+  enrolledAt: string;
+}
+
+export interface MyEnrollmentsResponse {
+  enrollments: (Enrollment & {
+    courseTitle: string;
+    courseCode: string;
+    department: string;
+    semester: string;
+  })[];
+}
+
+export interface ProvisionSessionsResponse {
+  courseUri: string;
+  slot: string;
+  sessionsCreated: number;
+  firstSession?: string;
+  lastSession?: string;
+}
+
+export interface LoadSlotsResponse {
+  semester: string;
+  slotsLoaded: number;
+  occurrencesLoaded: number;
+}
+
+export interface LoadCalendarResponse {
+  semester: string;
+  phasesLoaded: number;
+  holidaysLoaded: number;
+}
+
+export interface AuditLogResponse {
+  entries: {
+    action: string;
+    actorDid: string;
+    targetDid?: string;
+    details?: string;
+    createdAt: string;
+  }[];
+}
+
+export interface ListApiKeysResponse {
+  keys: {
+    id: string;
+    name: string;
+    prefix: string;
+    scopes: string[];
+    createdAt: string;
+    expiresAt?: string;
+    lastUsedAt?: string;
+  }[];
 }

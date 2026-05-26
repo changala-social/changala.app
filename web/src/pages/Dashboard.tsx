@@ -6,6 +6,7 @@ import {
   useMarkAllRead,
 } from "../hooks/useNotifications";
 import { useFollowedEnrollments, useMemberships } from "../hooks/useAuth";
+import { useMyEnrollments } from "../hooks/useCourses";
 import { EmailVerification } from "../components/common/EmailVerification";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { ErrorMessage } from "../components/common/ErrorMessage";
@@ -47,6 +48,12 @@ export default function Dashboard() {
     isLoading: enrollLoading,
     error: enrollError,
   } = useFollowedEnrollments();
+
+  const { data: myCoursesData, isLoading: myCoursesLoading } = useMyEnrollments(
+    did || "",
+  );
+
+  const myCourses = myCoursesData?.enrollments ?? [];
 
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
@@ -189,6 +196,66 @@ export default function Dashboard() {
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* My Courses */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-text">My Courses</h2>
+              <Link
+                to="/schedule"
+                className="text-xs text-academic hover:underline"
+              >
+                Schedule →
+              </Link>
+            </div>
+            {myCoursesLoading ? (
+              <LoadingSpinner size="sm" />
+            ) : myCourses.length === 0 ? (
+              <div className="text-center py-6 rounded-lg border border-border bg-surface">
+                <p className="text-sm text-text-muted">
+                  Not enrolled in any courses.
+                </p>
+                <Link
+                  to="/courses"
+                  className="text-xs text-academic hover:underline mt-1 inline-block"
+                >
+                  Browse courses →
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {myCourses.slice(0, 5).map((e) => (
+                  <Link
+                    key={e.courseUri}
+                    to={`/course/${encodeURIComponent(e.courseUri)}`}
+                    className="block p-3 rounded-lg border border-border bg-surface hover:bg-surface-hover transition"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-text">
+                        {e.courseCode}
+                      </p>
+                      {e.slot && (
+                        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-academic/10 text-academic">
+                          {e.slot}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-text-muted mt-0.5 truncate">
+                      {e.courseTitle}
+                    </p>
+                  </Link>
+                ))}
+                {myCourses.length > 5 && (
+                  <Link
+                    to="/schedule"
+                    className="block text-center text-xs text-academic hover:underline py-1"
+                  >
+                    View all {myCourses.length} courses →
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Followed enrollments */}
           <div>
             <h2 className="text-lg font-semibold text-text mb-4">

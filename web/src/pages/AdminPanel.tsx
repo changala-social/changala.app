@@ -7,15 +7,23 @@ import {
   useAuditLog,
 } from "../hooks/useIdentity";
 import { useMemberships, useRole } from "../hooks/useAuth";
+import { useProvisionSessions, useLoadCalendar } from "../hooks/useTimetable";
 import { useAuth } from "../context/AuthContext";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { ErrorMessage } from "../components/common/ErrorMessage";
 import type { ListBansResponse, Visibility } from "../generated/types";
 
-type AdminTab = "courses" | "moderation" | "archive" | "roles" | "apikeys";
+type AdminTab =
+  | "courses"
+  | "timetable"
+  | "moderation"
+  | "archive"
+  | "roles"
+  | "apikeys";
 
 const TAB_LABELS: Record<AdminTab, string> = {
-  courses: "Course Management",
+  courses: "Courses",
+  timetable: "Timetable",
   moderation: "Moderation",
   archive: "Archive",
   roles: "Roles",
@@ -1053,6 +1061,196 @@ function ApiKeysSection() {
   );
 }
 
+function TimetableSection() {
+  const [courseUri, setCourseUri] = useState("");
+  const [slot, setSlot] = useState("");
+  const [semester, setSemester] = useState("2025-winter");
+
+  const [calSemester, setCalSemester] = useState("2025-winter");
+  const [phasesJson, setPhasesJson] = useState("");
+  const [holidaysJson, setHolidaysJson] = useState("");
+
+  const provision = useProvisionSessions();
+  const loadCal = useLoadCalendar();
+
+  const handleProvision = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!courseUri || !slot || !semester) return;
+    provision.mutate({ courseUri, slot, semester });
+  };
+
+  const handleLoadCalendar = (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const phases = JSON.parse(phasesJson);
+      const holidays = JSON.parse(holidaysJson);
+      loadCal.mutate({ semester: calSemester, phases, holidays });
+    } catch (err) {
+      alert(
+        "Invalid JSON: " + (err instanceof Error ? err.message : "parse error"),
+      );
+    }
+  };
+
+  return (
+    <div className="space-y-10">
+      {/* Provision Sessions */}
+      <div>
+        <h3 className="text-lg font-semibold text-text mb-4">
+          Provision Sessions
+        </h3>
+        <p className="text-sm text-text-muted mb-4">
+          Generate all sessions for a course based on slot schedule and academic
+          calendar.
+        </p>
+        <form onSubmit={handleProvision} className="space-y-3 max-w-lg">
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Course URI
+            </label>
+            <input
+              type="text"
+              value={courseUri}
+              onChange={(e) => setCourseUri(e.target.value)}
+              placeholder="at://changala.ring/app.changala.course/..."
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-academic/40"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">
+                Slot
+              </label>
+              <input
+                type="text"
+                value={slot}
+                onChange={(e) => setSlot(e.target.value)}
+                placeholder="e.g. B1, G, SA1"
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-academic/40"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">
+                Semester
+              </label>
+              <input
+                type="text"
+                value={semester}
+                onChange={(e) => setSemester(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-academic/40"
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={provision.isPending || !courseUri || !slot}
+            className="px-5 py-2 rounded-lg bg-academic text-white text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+          >
+            {provision.isPending ? "Provisioning\u2026" : "Provision Sessions"}
+          </button>
+        </form>
+
+        {provision.isSuccess && provision.data && (
+          <div className="mt-4 p-4 rounded-lg border border-green-200 bg-green-50 text-sm">
+            <p className="font-medium text-green-800">
+              \u2713 {provision.data.sessionsCreated} sessions created
+            </p>
+            <p className="text-green-700 mt-1">
+              {provision.data.firstSession} \u2192 {provision.data.lastSession}
+            </p>
+            <p className="text-green-600 mt-1 font-mono text-xs">
+              Slot: {provision.data.slot}
+            </p>
+          </div>
+        )}
+        {provision.isError && (
+          <p className="mt-3 text-sm text-cancelled">
+            {provision.error instanceof Error
+              ? provision.error.message
+              : "Provisioning failed"}
+          </p>
+        )}
+      </div>
+
+      <hr className="border-border" />
+
+      {/* Load Calendar */}
+      <div>
+        <h3 className="text-lg font-semibold text-text mb-4">Load Calendar</h3>
+        <p className="text-sm text-text-muted mb-4">
+          Load academic phases and holidays for a semester. Required before
+          provisioning sessions.
+        </p>
+        <form onSubmit={handleLoadCalendar} className="space-y-3 max-w-lg">
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Semester
+            </label>
+            <input
+              type="text"
+              value={calSemester}
+              onChange={(e) => setCalSemester(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-academic/40"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Phases (JSON array)
+            </label>
+            <textarea
+              value={phasesJson}
+              onChange={(e) => setPhasesJson(e.target.value)}
+              rows={4}
+              placeholder='[{"name":"instructional_1","label":"Phase I","type":"instructional","start":"2025-12-30","end":"2026-02-13"}]'
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-xs font-mono focus:outline-none focus:ring-2 focus:ring-academic/40"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Holidays (JSON array)
+            </label>
+            <textarea
+              value={holidaysJson}
+              onChange={(e) => setHolidaysJson(e.target.value)}
+              rows={3}
+              placeholder='[{"date":"2026-01-26","name":"Republic Day"}]'
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-xs font-mono focus:outline-none focus:ring-2 focus:ring-academic/40"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={
+              loadCal.isPending || !calSemester || !phasesJson || !holidaysJson
+            }
+            className="px-5 py-2 rounded-lg bg-academic text-white text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+          >
+            {loadCal.isPending ? "Loading\u2026" : "Load Calendar"}
+          </button>
+        </form>
+
+        {loadCal.isSuccess && loadCal.data && (
+          <div className="mt-4 p-4 rounded-lg border border-green-200 bg-green-50 text-sm">
+            <p className="font-medium text-green-800">
+              \u2713 {loadCal.data.phasesLoaded} phases,{" "}
+              {loadCal.data.holidaysLoaded} holidays loaded
+            </p>
+            <p className="text-green-600 mt-1 font-mono text-xs">
+              Semester: {loadCal.data.semester}
+            </p>
+          </div>
+        )}
+        {loadCal.isError && (
+          <p className="mt-3 text-sm text-cancelled">
+            {loadCal.error instanceof Error
+              ? loadCal.error.message
+              : "Calendar load failed"}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main AdminPanel ──────────────────────────────────────────────
 
 export default function AdminPanel() {
@@ -1119,6 +1317,8 @@ export default function AdminPanel() {
           <AssignClassRepForm />
         </div>
       )}
+
+      {activeTab === "timetable" && <TimetableSection />}
 
       {activeTab === "moderation" && <BanSection />}
 
