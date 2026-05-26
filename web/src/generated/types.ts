@@ -397,7 +397,7 @@ export interface GetMembershipsResponse {
 }
 
 export interface GetRoleResponse {
-  role: Role;
+  role: Role | null;
 }
 
 export interface RegisterVoteResponse {

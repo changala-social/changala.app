@@ -762,8 +762,9 @@ pub struct AppChangalaRingGetRoleParams {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppChangalaRingGetRoleOutput {
-    /// The user's role on this instance.
-    pub role: String,
+    /// The user's role on this instance. Null if no verified membership.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppChangalaRingGetSessionParams {

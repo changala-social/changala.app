@@ -174,10 +174,7 @@ pub async fn get_role(
             })?;
 
     match role {
-        Some(r) => Ok(Json(AppChangalaRingGetRoleOutput { role: r })),
-        None => Err(XrpcError {
-            name: XrpcErrorName::NotFound,
-            message: "No verified membership found for this DID".to_string(),
-        }),
+        Some(r) => Ok(Json(AppChangalaRingGetRoleOutput { role: Some(r) })),
+        None => Ok(Json(AppChangalaRingGetRoleOutput { role: None })),
     }
 }
