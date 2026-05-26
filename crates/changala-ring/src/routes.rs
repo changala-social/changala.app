@@ -73,6 +73,10 @@ fn xrpc_routes() -> Router<AppState> {
             get(handlers::course::get_enrollments),
         )
         .route(
+            "/xrpc/app.changala.ring.getMyEnrollments",
+            get(handlers::course::get_my_enrollments),
+        )
+        .route(
             "/xrpc/app.changala.ring.assignClassRep",
             post(handlers::course::assign_class_rep),
         )

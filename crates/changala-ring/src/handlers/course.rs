@@ -7,6 +7,7 @@ use atrg_xrpc::{XrpcError, XrpcErrorName};
 use axum::extract::{Query, State};
 use axum::Json;
 use chrono::Utc;
+use serde::Deserialize;
 
 use changala_shared::types::*;
 
@@ -472,7 +473,67 @@ pub async fn get_enrollments(
     }))
 }
 
-/// `app.changala.ring.assignClassRep` — POST procedure.
+// ═══════════════════════════════════════════════════════════════════════════
+// getMyEnrollments — list courses a user is enrolled in
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// GET /xrpc/app.changala.ring.getMyEnrollments
+pub async fn get_my_enrollments(
+    State(state): State<AppState>,
+    Query(params): Query<GetMyEnrollmentsParams>,
+) -> Result<Json<serde_json::Value>, XrpcError> {
+    let app = state.extension::<crate::ChangalaState>();
+
+    let rows: Vec<(
+        String,
+        String,
+        Option<String>,
+        String,
+        String,
+        String,
+        String,
+        String,
+    )> = sqlx::query_as(
+        "SELECT e.course_uri, e.did, e.slot, e.enrolled_at, \
+                c.title, c.code, c.department, c.semester \
+         FROM enrollments e \
+         JOIN courses c ON e.course_uri = c.uri \
+         WHERE e.did = $1 \
+         ORDER BY e.enrolled_at DESC",
+    )
+    .bind(&params.did)
+    .fetch_all(&app.db)
+    .await
+    .map_err(|e| XrpcError {
+        name: XrpcErrorName::InternalServerError,
+        message: format!("database error: {e}"),
+    })?;
+
+    let enrollments: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(
+            |(course_uri, did, slot, enrolled_at, title, code, department, semester)| {
+                serde_json::json!({
+                    "courseUri": course_uri,
+                    "did": did,
+                    "slot": slot,
+                    "enrolledAt": enrolled_at,
+                    "courseTitle": title,
+                    "courseCode": code,
+                    "department": department,
+                    "semester": semester,
+                })
+            },
+        )
+        .collect();
+
+    Ok(Json(serde_json::json!({ "enrollments": enrollments })))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetMyEnrollmentsParams {
+    pub did: String,
+}
 ///
 /// Updates the class representative for a course and promotes the target
 /// DID's role in the memberships table to `classRep`. Returns the updated
