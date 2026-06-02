@@ -1,7 +1,7 @@
 use anyhow::Context;
 use atrg_core::AtrgApp;
 use sqlx::postgres::PgPool;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 mod api_key_auth;
@@ -163,6 +163,59 @@ impl ChangalaConfig {
     }
 }
 
+/// Locate the directory containing the SQL migration files.
+///
+/// `atrg_db::run_isolated_migrations` takes a filesystem path. A bare
+/// `./ring_migrations` only resolves when the process working directory
+/// happens to contain it (the container image sets `WORKDIR /app` and copies
+/// the migrations there). For `cargo run` from the workspace root — and any
+/// deployment whose working directory differs — that path does not exist,
+/// producing `migrations directory does not exist: ./ring_migrations`.
+///
+/// To be robust regardless of working directory, probe a list of candidates
+/// and return the first that exists:
+///   1. `$env_var` override (k8s / custom deployments),
+///   2. `./<dir_name>` (container `WORKDIR`, or running from the crate dir),
+///   3. `<exe_dir>/<dir_name>` (migrations shipped next to the binary),
+///   4. `<CARGO_MANIFEST_DIR>/<dir_name>` (`cargo run` from anywhere).
+fn resolve_migrations_dir(
+    env_var: &str,
+    dir_name: &str,
+    manifest_dir: &str,
+) -> anyhow::Result<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Ok(p) = std::env::var(env_var) {
+        if !p.trim().is_empty() {
+            candidates.push(PathBuf::from(p));
+        }
+    }
+    candidates.push(PathBuf::from(format!("./{dir_name}")));
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(dir_name));
+        }
+    }
+    candidates.push(Path::new(manifest_dir).join(dir_name));
+
+    for candidate in &candidates {
+        if candidate.is_dir() {
+            tracing::info!(path = %candidate.display(), "resolved migrations directory");
+            return Ok(candidate.clone());
+        }
+    }
+
+    let tried = candidates
+        .iter()
+        .map(|c| c.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    anyhow::bail!(
+        "could not locate the '{dir_name}' migrations directory (tried: {tried}). \
+         Set {env_var} to point at it."
+    )
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load changala-specific config from atrg.toml [changala] section
@@ -183,9 +236,14 @@ async fn main() -> anyhow::Result<()> {
     // atrg 0.2.0: run_isolated_migrations() replaces the hand-rolled runner.
     // Uses "_ring_migrations" tracking table so it never conflicts with
     // atrg-core's internal "_atrg_migrations" table.
+    let migrations_dir = resolve_migrations_dir(
+        "CHANGALA_RING_MIGRATIONS_DIR",
+        "ring_migrations",
+        env!("CARGO_MANIFEST_DIR"),
+    )?;
     atrg_db::run_isolated_migrations(
         &atrg_db::DbPool::Postgres(pg_pool.clone()),
-        Path::new("./ring_migrations"),
+        &migrations_dir,
         "_ring_migrations",
     )
     .await
